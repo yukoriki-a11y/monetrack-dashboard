@@ -5,10 +5,10 @@
 // SQL 側の追加は不要。
 // 並びはこのブラウザの localStorage に保存する（人によって違う画面にしたいので）。
 
-import { $, el, num, yen, pct, compact, downloadCsv } from './util.js';
-import { api } from './db.js';
-import * as ch from './charts.js';
-import { renderTable } from './table.js';
+import { $, el, num, yen, pct, compact, downloadCsv } from './util.js?v=202609080114';
+import { api } from './db.js?v=202609080114';
+import * as ch from './charts.js?v=202609080114';
+import { renderTable } from './table.js?v=202609080114';
 
 const LS_KEY = 'afd.mypage.widgets';
 

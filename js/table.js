@@ -3,7 +3,7 @@
 // cols の各要素:
 //   { key, label, type: 'text'|'num'|'yen'|'pct'|'node', width, render(row) }
 
-import { el, num, yen, pct } from './util.js';
+import { el, num, yen, pct } from './util.js?v=202609080114';
 
 const state = new WeakMap();
 

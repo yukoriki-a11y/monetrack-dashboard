@@ -1,11 +1,11 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js';
-import * as ch from './charts.js';
-import { renderTable, resetSort } from './table.js';
-import { initImporter, loadImportHistory } from './importer.js';
-import { initMyPage, renderMyPage, exportMyPage } from './mypage.js';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080114';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080114';
+import * as ch from './charts.js?v=202609080114';
+import { renderTable, resetSort } from './table.js?v=202609080114';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080114';
+import { initMyPage, renderMyPage, exportMyPage } from './mypage.js?v=202609080114';
 
 // ---- 状態 --------------------------------------------------------------
 
@@ -33,6 +33,10 @@ const state = {
   selectedAffiliate: null,
   detail: { page: 0, size: 100, search: '', rows: [], total: 0 },
 };
+
+// いま読み込まれている版。index.html の ?v=... がそのまま入る（bump.ps1 が更新する）。
+// 「直したのに変わらない」ときにキャッシュかどうかを目で確認できるようにしている。
+const BUILD = new URL(import.meta.url).searchParams.get('v') || 'dev';
 
 // ---- 起動 --------------------------------------------------------------
 
@@ -147,6 +151,7 @@ let started = false;
 async function startApp(user) {
   show('app');
   $('#who').textContent = user.email || '';
+  $('#build').textContent = `版 ${BUILD}`;
   if (started) return;
   started = true;
 

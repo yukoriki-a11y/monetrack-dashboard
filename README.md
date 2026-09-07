@@ -81,14 +81,13 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 ## GitHub Pages で公開する
 
 ```bash
-git remote add origin https://github.com/<ユーザー名>/affiliate-dashboard.git
-git branch -M main
+git remote add origin https://github.com/yukoriki-a11y/monetrack-dashboard.git
 git push -u origin main
 ```
 
 そのあと GitHub のリポジトリで
 **Settings → Pages → Source: Deploy from a branch → Branch: `main` / `/ (root)`** を選ぶ。
-数十秒で `https://<ユーザー名>.github.io/affiliate-dashboard/` が開ける。
+数十秒で https://yukoriki-a11y.github.io/monetrack-dashboard/ が開ける。
 
 > リポジトリを public にしても、**公開されるのはアプリのコードだけ**。
 > 成果データ・クリックデータは Supabase 側にあり、ログインしないと 1 行も読めない。

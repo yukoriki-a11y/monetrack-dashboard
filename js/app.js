@@ -15,6 +15,7 @@ const state = {
   meta: null,           // dash_filters の結果
   grain: 'day',
   dim: 'product',
+  summaryRows: [],      // サマリーの日別行
   affiliates: [],       // アフィリエイター一覧のキャッシュ
   compare: {            // 比較タブ
     dim: 'affiliate',
@@ -200,6 +201,15 @@ function wireFilters() {
 }
 
 function wireViewControls() {
+  // 想定マネートラック報酬率。入れた値はこのブラウザに覚えさせる。
+  const saved = localStorage.getItem(LS_MT_RATE);
+  if (saved !== null) $('#mt-rate').value = saved;
+  $('#mt-rate').addEventListener('change', () => {
+    localStorage.setItem(LS_MT_RATE, String(mtRate()));
+    resetSort($('#t-summary'));
+    render();
+  });
+
   $('#grain').addEventListener('click', (e) => {
     const btn = e.target.closest('.chip');
     if (!btn) return;
@@ -408,44 +418,59 @@ async function render() {
 
 // ---- サマリー ----------------------------------------------------------
 
-// サマリーは「まず見るべき4つ」に絞る。
-// デバイス/OS/広告主などの細かい内訳は「マイページ」で自分で組み立てる。
-async function renderSummary() {
-  const f = state.filter;
-  const [kpi, ts, status, products, affs] = await Promise.all([
-    api.kpi(f),
-    api.timeseries(f, 'day'),
-    api.dimension(f, 'status', 20),
-    api.dimension(f, 'product', 10),
-    api.affiliates(f, 10),
-  ]);
+// サマリー: 連日の売上を一覧と線グラフで見る画面。
+// 「想定マネートラック報酬」は アフィリエイター報酬額 × 率（既定30%）で出す。
+const LS_MT_RATE = 'afd.mtRate';
 
-  renderKpis('#kpis', [
-    { k: '成果件数', v: num(kpi.conversions), s: `クリック ${num(kpi.clicks)}` },
-    { k: '売上',     v: '¥' + compact(kpi.sales), s: yen(kpi.sales) },
-    { k: '報酬額',   v: '¥' + compact(kpi.reward), s: kpi.reward_ratio === null ? null : `売上比 ${pct(kpi.reward_ratio)}` },
-    { k: 'CVR',      v: kpi.cvr === null ? '—' : pct(kpi.cvr), s: kpi.cvr === null ? '同期間のクリック未取込' : `平均単価 ${yen(kpi.aov)}` },
-  ]);
-
-  const labels = ts.map((r) => r.bucket.slice(5));
-  ch.line('c-summary-line', labels, [
-    { label: '成果件数', data: ts.map((r) => r.conversions), axis: 'y', fill: true },
-    { label: 'クリック数', data: ts.map((r) => r.clicks), axis: 'y1', color: ch.color(1) },
-  ], { yTitle: '成果', y1Title: 'クリック' });
-
-  const top = affs.filter((r) => Number(r.sales) > 0).slice(0, 10);
-  ch.bar('c-summary-aff', top.map((r) => r.affiliate_id), [
-    { label: '売上', data: top.map((r) => r.sales), color: ch.color(2) },
-  ], { horizontal: true, money: true });
-
-  const prod = products.filter((r) => Number(r.sales) > 0).slice(0, 10);
-  ch.bar('c-summary-product', prod.map((r) => r.label), [
-    { label: '売上', data: prod.map((r) => r.sales), color: ch.color(1) },
-  ], { horizontal: true, money: true });
-
-  ch.pie('c-summary-status', status.map((r) => r.label), status.map((r) => r.conversions));
+function mtRate() {
+  const v = Number($('#mt-rate').value);
+  return Number.isFinite(v) && v >= 0 ? v : 30;
 }
 
+async function renderSummary() {
+  const f = state.filter;
+  const ts = await api.timeseries(f, 'day');
+  const rate = mtRate() / 100;
+
+  // 成果が無かった日も 0 として並べる（連日で見たいので歯抜けにしない）
+  const byDay = new Map(ts.map((r) => [String(r.bucket), r]));
+  const rows = [];
+  for (let d = new Date(f.from); ymd(d) <= f.to; d = addDays(d, 1)) {
+    const key = ymd(d);
+    const r = byDay.get(key);
+    const sales = Number(r?.sales || 0);
+    const reward = Number(r?.reward || 0);
+    rows.push({
+      bucket: key,
+      day: `${key.slice(5).replace('-', '/')}（${WEEKDAY[d.getDay()]}）`,
+      conversions: Number(r?.conversions || 0),
+      sales,
+      reward,
+      mt: Math.round(reward * rate),
+    });
+  }
+  state.summaryRows = rows;
+
+  ch.line('c-summary-line', rows.map((r) => r.day.slice(0, 5)), [
+    { label: '売上', data: rows.map((r) => r.sales), fill: true },
+  ], { money: true });
+
+  const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+  $('#summary-total').textContent =
+    `期間合計 売上 ${yen(sum('sales'))} / 報酬額 ${yen(sum('reward'))} / 想定 ${yen(sum('mt'))}`;
+
+  renderTable($('#t-summary'), [
+    { key: 'day', label: '日付', type: 'text', cellClass: 'num' },
+    { key: 'sales', label: '売上', type: 'yen' },
+    { key: 'reward', label: 'アフィリエイター報酬額', type: 'yen' },
+    { key: 'mt', label: `想定マネートラック報酬（${mtRate()}%）`, type: 'yen' },
+    { key: 'conversions', label: '成果件数', type: 'num' },
+  ], rows, { sortKey: 'bucket', sortDir: 'asc', empty: 'この期間の成果がありません' });
+}
+
+const WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'];
+
+// アフィリエイター内訳などで使う小さな数値タイル
 function renderKpis(sel, items) {
   const box = $(sel);
   box.replaceChildren(...items.map((i) => el('div', { class: 'kpi' },
@@ -798,7 +823,11 @@ async function renderDetail() {
 
 function exportCsv(kind) {
   const stamp = `${state.filter.from}_${state.filter.to}`;
-  if (kind === 'affiliates') {
+  if (kind === 'summary') {
+    downloadCsv(`日別売上_${stamp}.csv`,
+      ['日付', '売上', 'アフィリエイター報酬額', `想定マネートラック報酬(${mtRate()}%)`, '成果件数'],
+      (state.summaryRows || []).map((r) => [r.bucket, r.sales, r.reward, r.mt, r.conversions]));
+  } else if (kind === 'affiliates') {
     downloadCsv(`アフィリエイター別_${stamp}.csv`,
       ['アフィリエイターID', 'クリック', '成果', 'CVR(%)', '売上', '報酬額', '平均単価'],
       state.affiliates.map((r) => [r.affiliate_id, r.clicks, r.conversions, r.cvr, r.sales, r.reward, r.aov]));

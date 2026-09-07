@@ -137,24 +137,28 @@
 
     <main id="main">
 
-      <!-- サマリー: KPI4つ + 見出しグラフ1枚 + 補助3枚 -->
+      <!-- サマリー: 日別の売上（線グラフ＋明細） -->
       <section class="view v-summary" data-view="summary">
-        <div class="kpis" id="kpis"></div>
-        <div class="card span3">
-          <h2>日次推移（成果 / クリック）</h2>
+        <div class="card">
+          <div class="card-head">
+            <h2>日別 売上</h2>
+            <label class="inline">
+              想定マネートラック報酬率
+              <input id="mt-rate" type="number" min="0" max="100" step="0.1" value="30">
+              <span class="muted">%</span>
+            </label>
+          </div>
           <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
         </div>
         <div class="card">
-          <h2>アフィリエイター 売上 TOP10</h2>
-          <div class="chart-wrap"><canvas id="c-summary-aff"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>商品 売上 TOP10</h2>
-          <div class="chart-wrap"><canvas id="c-summary-product"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>ステータス内訳</h2>
-          <div class="chart-wrap"><canvas id="c-summary-status"></canvas></div>
+          <div class="card-head">
+            <h2>日別 明細</h2>
+            <div class="row">
+              <span class="muted small" id="summary-total"></span>
+              <button class="btn sm" data-export="summary">CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="t-summary"></table></div>
         </div>
       </section>
 

@@ -1,0 +1,12 @@
+# 手元の確認用に置いた元データ（個人情報を含みうるので絶対にコミットしない）
+.local-test/
+*.xlsx
+*.xls
+*.csv
+
+# OS / エディタ
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

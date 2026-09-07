@@ -72,7 +72,15 @@ function wireSetup() {
     }
     if (k.length < 30) {
       err.hidden = false;
-      err.textContent = 'anon key を貼り付けてください';
+      err.textContent = '公開用APIキー（Publishable / anon public）を貼り付けてください';
+      return;
+    }
+    // service_role / secret のキーを誤って貼るのを防ぐ
+    if (/^sb_secret_/i.test(k) || isServiceRoleJwt(k)) {
+      err.hidden = false;
+      err.textContent =
+        'これは service_role（管理者）のキーです。RLS を無視できるため使えません。'
+        + 'Publishable / anon public のキーを貼ってください。';
       return;
     }
     err.hidden = true;
@@ -84,6 +92,19 @@ function wireSetup() {
     clearConn();
     location.reload();
   });
+}
+
+// 旧形式（JWT）のキーは payload の role で見分けられる。
+// service_role を貼られたらブラウザに保存させない。
+function isServiceRoleJwt(key) {
+  const parts = key.split('.');
+  if (parts.length !== 3) return false;
+  try {
+    const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json).role === 'service_role';
+  } catch {
+    return false;
+  }
 }
 
 function wireLogin() {

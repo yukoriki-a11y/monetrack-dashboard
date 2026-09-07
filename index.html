@@ -16,9 +16,13 @@
     <label>Project URL
       <input id="setup-url" type="url" placeholder="https://xxxxxxxx.supabase.co" autocomplete="off">
     </label>
-    <label>anon public key
-      <input id="setup-key" type="password" placeholder="eyJ..." autocomplete="off">
+    <label>公開用APIキー（Publishable / anon public）
+      <input id="setup-key" type="password" placeholder="sb_publishable_... または eyJ..." autocomplete="off">
     </label>
+    <p class="muted small">
+      Supabase の Project Settings → API Keys にある<strong>公開用</strong>のキー。
+      <strong>service_role / secret のキーは使わないでください</strong>（RLSを無視できる管理者キーです）。
+    </p>
     <p class="err" id="setup-err" hidden></p>
     <button id="setup-save" class="btn primary">保存して続ける</button>
   </div>

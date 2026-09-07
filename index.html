@@ -137,28 +137,28 @@
 
     <main id="main">
 
-      <!-- サマリー: 日別の売上（線グラフ＋明細） -->
+      <!-- サマリー: 日別明細（横方向）＋売上の推移 -->
       <section class="view v-summary" data-view="summary">
         <div class="card">
           <div class="card-head">
-            <h2>日別 売上</h2>
-            <label class="inline">
-              想定マネートラック報酬率
-              <input id="mt-rate" type="number" min="0" max="100" step="0.1" value="30">
-              <span class="muted">%</span>
-            </label>
-          </div>
-          <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-head">
             <h2>日別 明細</h2>
-            <div class="row">
+            <div class="row wrap">
+              <label class="inline">
+                想定マネートラック報酬率
+                <input id="mt-rate" type="number" min="0" max="1000" step="0.1" value="30">
+                <span class="muted">%</span>
+              </label>
               <span class="muted small" id="summary-total"></span>
               <button class="btn sm" data-export="summary">CSV</button>
             </div>
           </div>
-          <div class="table-wrap"><table id="t-summary"></table></div>
+          <div class="matrix-wrap" id="summary-matrix-wrap">
+            <table id="t-summary" class="matrix"></table>
+          </div>
+        </div>
+        <div class="card">
+          <h2>売上の推移</h2>
+          <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
         </div>
       </section>
 

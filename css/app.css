@@ -316,12 +316,44 @@ label.inline.check { cursor: pointer; }
   grid-auto-rows: minmax(0, 1fr);
 }
 
-/* サマリー: 日別売上の線グラフ + 日別明細 */
+/* サマリー: 上に日別明細（高さは中身ぶんだけ）、下に売上の推移 */
 .v-summary {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 #mt-rate { width: 62px; text-align: right; }
+
+/* 日付を横に並べる表。
+   指標名の列だけ左に固定し、日付の部分を横スクロールさせる。 */
+.matrix-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+table.matrix { width: auto; min-width: 100%; }
+table.matrix th, table.matrix td { white-space: nowrap; cursor: default; }
+table.matrix thead th { min-width: 96px; text-align: right; padding: 6px 10px; box-shadow: none; }
+table.matrix td { min-width: 96px; text-align: right; font-variant-numeric: tabular-nums; padding: 7px 10px; }
+table.matrix .wd { display: block; font-size: 10px; font-weight: 400; color: var(--ink-3); }
+
+/* 左端に固定する指標名の列 */
+table.matrix th.rowhead {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--panel-3);
+  text-align: left;
+  min-width: 190px;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--ink-2);
+  box-shadow: 4px 0 8px -4px rgba(16, 24, 40, .3);
+}
+table.matrix thead th.rowhead { z-index: 4; }
+/* 直近の列を少し強調する */
+table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 
 /* マイページ */
 .v-mypage { grid-template-rows: auto minmax(0, 1fr); }

@@ -432,7 +432,8 @@ async function renderSummary() {
   const ts = await api.timeseries(f, 'day');
   const rate = mtRate() / 100;
 
-  // 成果が無かった日も 0 として並べる（連日で見たいので歯抜けにしない）
+  // 成果が無かった日も 0 として並べる（連日で見たいので歯抜けにしない）。
+  // 並びは古い → 新しい。つまり左から右へ行くほど今日に近づく。
   const byDay = new Map(ts.map((r) => [String(r.bucket), r]));
   const rows = [];
   for (let d = new Date(f.from); ymd(d) <= f.to; d = addDays(d, 1)) {
@@ -442,7 +443,8 @@ async function renderSummary() {
     const reward = Number(r?.reward || 0);
     rows.push({
       bucket: key,
-      day: `${key.slice(5).replace('-', '/')}（${WEEKDAY[d.getDay()]}）`,
+      md: key.slice(5).replace('-', '/'),
+      wd: WEEKDAY[d.getDay()],
       conversions: Number(r?.conversions || 0),
       sales,
       reward,
@@ -451,24 +453,52 @@ async function renderSummary() {
   }
   state.summaryRows = rows;
 
-  ch.line('c-summary-line', rows.map((r) => r.day.slice(0, 5)), [
-    { label: '売上', data: rows.map((r) => r.sales), fill: true },
-  ], { money: true });
-
   const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
   $('#summary-total').textContent =
     `期間合計 売上 ${yen(sum('sales'))} / 報酬額 ${yen(sum('reward'))} / 想定 ${yen(sum('mt'))}`;
 
-  renderTable($('#t-summary'), [
-    { key: 'day', label: '日付', type: 'text', cellClass: 'num' },
-    { key: 'sales', label: '売上', type: 'yen' },
-    { key: 'reward', label: 'アフィリエイター報酬額', type: 'yen' },
-    { key: 'mt', label: `想定マネートラック報酬（${mtRate()}%）`, type: 'yen' },
-    { key: 'conversions', label: '成果件数', type: 'num' },
-  ], rows, { sortKey: 'bucket', sortDir: 'asc', empty: 'この期間の成果がありません' });
+  renderDailyMatrix(rows);
+
+  ch.line('c-summary-line', rows.map((r) => r.md), [
+    { label: '売上', data: rows.map((r) => r.sales), fill: true },
+  ], { money: true });
 }
 
 const WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'];
+
+// 日付を「列」にした表を組む。指標名の列は CSS で左に固定してある。
+function renderDailyMatrix(rows) {
+  const table = $('#t-summary');
+  const last = rows.length - 1;
+
+  if (!rows.length) {
+    table.replaceChildren(el('tbody', {}, el('tr', {},
+      el('td', { class: 'empty', text: '期間を選んでください' }))));
+    return;
+  }
+
+  const metrics = [
+    { key: 'sales', label: '売上', fmt: yen },
+    { key: 'reward', label: 'アフィリエイター報酬額', fmt: yen },
+    { key: 'mt', label: `想定マネートラック報酬（${mtRate()}%）`, fmt: yen },
+    { key: 'conversions', label: '成果件数', fmt: num },
+  ];
+
+  table.replaceChildren(
+    el('thead', {}, el('tr', {},
+      el('th', { class: 'rowhead', text: '日付' }),
+      ...rows.map((r, i) => el('th', { class: i === last ? 'is-latest' : null },
+        r.md,
+        el('span', { class: 'wd', text: r.wd }))))),
+    el('tbody', {}, ...metrics.map((m) => el('tr', {},
+      el('th', { class: 'rowhead', text: m.label }),
+      ...rows.map((r, i) => el('td', { class: i === last ? 'is-latest' : null, text: m.fmt(r[m.key]) }))))),
+  );
+
+  // 直近の日付が見えている状態で開きたいので、右端まで寄せる
+  const wrap = $('#summary-matrix-wrap');
+  wrap.scrollLeft = wrap.scrollWidth;
+}
 
 // アフィリエイター内訳などで使う小さな数値タイル
 function renderKpis(sel, items) {

@@ -16,6 +16,16 @@ const state = {
   grain: 'day',
   dim: 'product',
   affiliates: [],       // アフィリエイター一覧のキャッシュ
+  compare: {            // 比較タブ
+    dim: 'affiliate',
+    metric: 'conversions',
+    grain: 'day',
+    // null = まだ選んでいない（上位を自動選択する） / [] = 明示的に空にした
+    picked: { affiliate: null, advertiser: null },
+    candidates: [],
+    rows: [],
+    totals: [],
+  },
   trendRows: [],
   dimRows: [],
   srcRows: [],
@@ -207,6 +217,41 @@ function wireViewControls() {
     renderProducts();
   });
 
+  // 比較タブ
+  $('#cmp-dim').addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    $$('#cmp-dim .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
+    state.compare.dim = btn.dataset.cmpdim;
+    $('#cmp-search').value = '';
+    resetSort($('#t-compare'));
+    render();
+  });
+  $('#cmp-metric').addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    $$('#cmp-metric .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
+    state.compare.metric = btn.dataset.cmpmetric;
+    render();
+  });
+  $('#cmp-grain').addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    $$('#cmp-grain .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
+    state.compare.grain = btn.dataset.cmpgrain;
+    render();
+  });
+  $('#cmp-search').addEventListener('input', debounce(() => renderCompareList(), 200));
+  $('#cmp-top5').addEventListener('click', () => {
+    const c = state.compare;
+    c.picked[c.dim] = c.candidates.slice(0, 5).map((r) => r.label);
+    render();
+  });
+  $('#cmp-clear').addEventListener('click', () => {
+    state.compare.picked[state.compare.dim] = [];
+    render();
+  });
+
   $('#aff-search').addEventListener('input', debounce(() => renderAffiliateTable(), 200));
   $('#aff-detail-close').addEventListener('click', () => {
     state.selectedAffiliate = null;
@@ -347,6 +392,7 @@ async function render() {
   try {
     if (state.view === 'summary')         await renderSummary();
     else if (state.view === 'mypage')     await renderMyPage(state.filter);
+    else if (state.view === 'compare')    await renderCompare();
     else if (state.view === 'trend')      await renderTrend();
     else if (state.view === 'affiliates') await renderAffiliates();
     else if (state.view === 'products')   await renderProducts();
@@ -429,6 +475,137 @@ async function renderTrend() {
   ch.line('c-trend-cvr', labels, [
     { label: 'CVR (%)', data: ts.map((r) => r.cvr), color: ch.color(3) },
   ]);
+}
+
+// ---- 比較 --------------------------------------------------------------
+// 「この人はどのくらい動いているのか」「この広告主はどうか」を、
+// 選んだ相手ぶんの線を重ねて見る画面。
+
+const CMP_METRIC = {
+  conversions: { label: '成果件数', type: 'num', money: false },
+  sales:       { label: '売上',     type: 'yen', money: true },
+  reward:      { label: '報酬額',   type: 'yen', money: true },
+  clicks:      { label: 'クリック', type: 'num', money: false },
+  cvr:         { label: 'CVR',      type: 'pct', money: false },
+};
+
+async function renderCompare() {
+  const c = state.compare;
+  const dimLabel = c.dim === 'advertiser' ? '広告主' : 'アフィリエイター';
+
+  // 選択候補の一覧（売上順）
+  c.candidates = await api.dimension(state.filter, c.dim, 300);
+
+  // 初回だけ上位5件を自動で選ぶ。自分で空にした場合はそのまま空にしておく。
+  if (c.picked[c.dim] === null) {
+    c.picked[c.dim] = c.candidates.slice(0, 5).map((r) => r.label);
+  }
+  renderCompareList();
+
+  const picked = c.picked[c.dim];
+  $('#cmp-title').textContent = `${dimLabel}の動き（${CMP_METRIC[c.metric].label}）`;
+
+  if (!picked.length) {
+    ch.line('c-compare', [], []);
+    renderTable($('#t-compare'), [{ key: 'series', label: dimLabel, type: 'text' }], [],
+      { empty: `左の一覧から${dimLabel}を選んでください` });
+    c.rows = [];
+    c.totals = [];
+    return;
+  }
+
+  const rows = await api.compare(state.filter, c.dim, picked, c.grain, 5);
+  c.rows = rows;
+
+  // series × bucket の行を、系列ごとの配列に組み替える
+  const buckets = [...new Set(rows.map((r) => r.bucket))].sort();
+  const bySeries = new Map();
+  for (const r of rows) {
+    if (!bySeries.has(r.series)) bySeries.set(r.series, new Map());
+    bySeries.get(r.series).set(r.bucket, r);
+  }
+
+  const labels = buckets.map((b) => (c.grain === 'month' ? String(b).slice(0, 7) : String(b).slice(5)));
+  const series = picked
+    .filter((name) => bySeries.has(name))
+    .map((name, i) => ({
+      label: name,
+      color: ch.color(colorIndexOf(name, picked)),
+      data: buckets.map((b) => {
+        const r = bySeries.get(name).get(b);
+        if (!r) return c.metric === 'cvr' ? null : 0;
+        return r[c.metric] === null ? null : Number(r[c.metric]);
+      }),
+    }));
+
+  ch.line('c-compare', labels, series, { money: CMP_METRIC[c.metric].money });
+
+  // 期間合計
+  const totals = picked.map((name) => {
+    const map = bySeries.get(name);
+    const all = map ? Array.from(map.values()) : [];
+    const sum = (k) => all.reduce((a, r) => a + Number(r[k] || 0), 0);
+    const conversions = sum('conversions');
+    const clicks = sum('clicks');
+    return {
+      series: name,
+      clicks,
+      conversions,
+      cvr: clicks ? (conversions * 100) / clicks : null,
+      sales: sum('sales'),
+      reward: sum('reward'),
+      days: all.filter((r) => Number(r.conversions || 0) > 0 || Number(r.clicks || 0) > 0).length,
+    };
+  });
+  c.totals = totals;
+
+  renderTable($('#t-compare'), [
+    { key: 'series', label: dimLabel, type: 'text' },
+    { key: 'clicks', label: 'クリック', type: 'num' },
+    { key: 'conversions', label: '成果', type: 'num' },
+    { key: 'cvr', label: 'CVR', type: 'pct' },
+    { key: 'sales', label: '売上', type: 'yen' },
+    { key: 'reward', label: '報酬額', type: 'yen' },
+    { key: 'days', label: '稼働日数', type: 'num', title: '成果かクリックがあった期間の数' },
+  ], totals, { sortKey: 'sales', sortDir: 'desc' });
+}
+
+// 線の色は「選んだ順」で決める。並べ替えても同じ人が同じ色でいられるように。
+function colorIndexOf(name, picked) {
+  const i = picked.indexOf(name);
+  return i < 0 ? 0 : i;
+}
+
+function renderCompareList() {
+  const c = state.compare;
+  const q = ($('#cmp-search').value || '').toLowerCase();
+  const box = $('#cmp-list');
+  const current = c.picked[c.dim] ?? [];
+  const picked = new Set(current);
+
+  const list = c.candidates.filter((r) => !q || String(r.label).toLowerCase().includes(q));
+  box.replaceChildren();
+  if (!list.length) {
+    box.append(el('p', { class: 'muted small', text: '該当なし' }));
+    return;
+  }
+
+  for (const r of list) {
+    const cb = el('input', { type: 'checkbox', value: r.label });
+    cb.checked = picked.has(r.label);
+    cb.addEventListener('change', () => {
+      const cur = new Set(c.picked[c.dim] ?? []);
+      if (cb.checked) cur.add(r.label);
+      else cur.delete(r.label);
+      c.picked[c.dim] = c.candidates.map((x) => x.label).filter((l) => cur.has(l));
+      render();
+    });
+    const idx = current.indexOf(r.label);
+    const swatch = el('span', { class: 'swatch' });
+    swatch.style.background = idx >= 0 ? ch.color(idx) : 'var(--line-strong)';
+    box.append(el('label', {}, cb, swatch, r.label,
+      el('span', { class: 'cmp-sub', text: '¥' + compact(r.sales) })));
+  }
 }
 
 // ---- アフィリエイター --------------------------------------------------
@@ -630,6 +807,12 @@ function exportCsv(kind) {
     downloadCsv(`${label}別_${stamp}.csv`,
       [label, 'クリック', '成果', 'CVR(%)', '数量', '売上', '報酬額'],
       state.dimRows.map(withCvr).map((r) => [r.label, r.clicks, r.conversions, r.cvr, r.qty, r.sales, r.reward]));
+  } else if (kind === 'compare') {
+    const dimLabel = state.compare.dim === 'advertiser' ? '広告主' : 'アフィリエイター';
+    downloadCsv(`比較_${dimLabel}_${stamp}.csv`,
+      [dimLabel, 'クリック', '成果', 'CVR(%)', '売上', '報酬額', '稼働日数'],
+      (state.compare.totals || []).map((r) =>
+        [r.series, r.clicks, r.conversions, r.cvr, r.sales, r.reward, r.days]));
   } else if (kind === 'trend') {
     downloadCsv(`推移_${stamp}.csv`,
       ['期間', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],

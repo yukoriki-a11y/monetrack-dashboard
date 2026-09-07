@@ -75,6 +75,10 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg>
       <span>推移</span>
     </button>
+    <button class="tab" data-view="compare">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l5-9 4 5 4-8 5 12"/><path d="M3 21h18"/></svg>
+      <span>比較</span>
+    </button>
     <button class="tab" data-view="affiliates">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.2 2.7-5 6-5s6 1.8 6 5"/><path d="M16 6.5a3 3 0 010 5.6M18 20c0-2.4-1-4-2.5-4.6"/></svg>
       <span>アフィリエイター</span>
@@ -165,6 +169,54 @@
           <span class="muted small">軸・指標・グラフ種類を選んで自由に並べられます。並びはこのブラウザに保存されます。</span>
         </div>
         <div class="mp-board" id="mp-board"></div>
+      </section>
+
+      <!-- 比較: 選んだアフィリエイター/広告主の動きを線グラフで重ねる -->
+      <section class="view v-compare" data-view="compare" hidden>
+        <div class="card cmp-pick">
+          <div class="card-head">
+            <h2>だれ / どこを見るか</h2>
+            <div class="seg" id="cmp-dim">
+              <button class="chip is-active" data-cmpdim="affiliate">アフィリエイター</button>
+              <button class="chip" data-cmpdim="advertiser">広告主</button>
+            </div>
+          </div>
+          <div class="row wrap">
+            <input id="cmp-search" type="search" placeholder="IDで絞り込み">
+            <button class="btn sm" id="cmp-top5">売上上位5件を選ぶ</button>
+            <button class="btn link" id="cmp-clear">選択を外す</button>
+          </div>
+          <div class="cmp-list" id="cmp-list"></div>
+        </div>
+
+        <div class="card span2">
+          <div class="card-head">
+            <h2 id="cmp-title">動きの比較</h2>
+            <div class="row wrap">
+              <div class="seg" id="cmp-metric">
+                <button class="chip is-active" data-cmpmetric="conversions">成果件数</button>
+                <button class="chip" data-cmpmetric="sales">売上</button>
+                <button class="chip" data-cmpmetric="reward">報酬額</button>
+                <button class="chip" data-cmpmetric="clicks">クリック</button>
+                <button class="chip" data-cmpmetric="cvr">CVR</button>
+              </div>
+              <div class="seg" id="cmp-grain">
+                <button class="chip is-active" data-cmpgrain="day">日</button>
+                <button class="chip" data-cmpgrain="week">週</button>
+                <button class="chip" data-cmpgrain="month">月</button>
+              </div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="c-compare"></canvas></div>
+        </div>
+
+        <div class="card span3">
+          <div class="card-head">
+            <h2>期間合計</h2>
+            <button class="btn sm" data-export="compare">CSV</button>
+          </div>
+          <div class="table-wrap"><table id="t-compare"></table></div>
+        </div>
       </section>
 
       <!-- 推移 -->

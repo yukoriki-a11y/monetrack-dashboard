@@ -18,11 +18,11 @@
   --ink: #1c2430;
   --ink-2: #5b6775;
   --ink-3: #8b96a5;
-  --accent: #2f6feb;
-  --accent-soft: #eaf1fe;
+  /* UIの装飾に色は使わない。強調は「色」ではなく「濃さ」で表す。
+     色を持つのはグラフの中（系列の識別）と、エラー文だけ。 */
+  --accent: #1c2430;
+  --accent-soft: #e9ecf0;
   --accent-ink: #ffffff;
-  --good: #13866f;
-  --warn: #b8730b;
   --bad: #c2413a;
   --radius: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, .05);
@@ -42,11 +42,9 @@
     --ink: #e8edf3;
     --ink-2: #a7b2c0;
     --ink-3: #75808f;
-    --accent: #5b93ff;
-    --accent-soft: #1b2740;
-    --accent-ink: #0b1119;
-    --good: #4bc3a5;
-    --warn: #e5a63c;
+    --accent: #e8edf3;
+    --accent-soft: #262f3b;
+    --accent-ink: #0f1319;
     --bad: #f0736a;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3);
   }
@@ -100,7 +98,9 @@ h3 { font-size: 12px; color: var(--ink-2); }
 .btn.sm { padding: 4px 9px; font-size: 11px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.06); }
-.btn.link { border: 0; background: none; color: var(--accent); padding: 4px 2px; }
+/* 色を使わないので、押せることは下線で示す */
+.btn.link { border: 0; background: none; color: var(--ink-2); padding: 4px 2px; text-decoration: underline; text-underline-offset: 2px; }
+.btn.link:hover { color: var(--ink); background: none; }
 .btn:disabled { opacity: .45; cursor: default; }
 
 .chip {
@@ -225,7 +225,13 @@ input:focus-visible, button:focus-visible, summary:focus-visible {
   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
 .tab:hover { background: var(--panel-2); color: var(--ink); }
-.tab.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+/* アクティブは色ではなく、地の濃さ＋左の縦棒＋太字で示す */
+.tab.is-active {
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 650;
+  box-shadow: inset 2px 0 0 var(--ink);
+}
 
 .sidebar-foot {
   align-self: end;
@@ -335,6 +341,36 @@ label.inline.check { cursor: pointer; }
 .mp-empty { grid-column: 1 / -1; place-content: center; text-align: center; }
 .mp-kpi { display: grid; place-items: center; min-height: 0; }
 .mp-kpi .v { font-size: clamp(26px, 5vw, 46px); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* 比較: 左に選択リスト、右に重ねた線グラフ、下に合計表 */
+.v-compare {
+  grid-template-columns: minmax(220px, .8fr) repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1.35fr) minmax(0, 1fr);
+}
+.cmp-pick { grid-row: span 2; grid-template-rows: auto auto minmax(0, 1fr); }
+.cmp-list {
+  overflow: auto;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+.cmp-list label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 5px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cmp-list label:hover { background: var(--panel-2); }
+.cmp-list .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.cmp-list .cmp-sub { margin-left: auto; color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 /* 推移: 大きい推移グラフ + 2枚 */
 .v-trend {
@@ -464,10 +500,11 @@ tbody tr.clickable { cursor: pointer; }
 tbody tr.is-selected { background: var(--accent-soft); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 600; }
-.badge.ok   { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
-.badge.hold { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
-.badge.ng   { background: color-mix(in srgb, var(--bad) 15%, transparent);  color: var(--bad); }
+/* ステータスは色ではなく、塗り／枠線／点線で区別する */
+.badge { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.badge.ok   { background: var(--ink); color: var(--panel); }
+.badge.hold { background: var(--panel-2); color: var(--ink-2); border: 1px solid var(--line-strong); }
+.badge.ng   { background: none; color: var(--ink-3); border: 1px dashed var(--line-strong); }
 .empty { padding: 22px; text-align: center; color: var(--ink-3); }
 
 .pager { display: flex; gap: 9px; align-items: center; justify-content: center; }
@@ -487,10 +524,14 @@ td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-sp
 }
 .drop.over { border-color: var(--accent); background: var(--accent-soft); }
 .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 12px; overflow: auto; min-height: 0; align-content: start; }
-.log li { padding: 7px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
-.log li.ok   { border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
-.log li.warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
-.log li.ng   { border-color: color-mix(in srgb, var(--bad)  45%, var(--line)); }
+/* 取込結果も色分けせず、左の縦棒の濃さと記号で区別する */
+.log li { padding: 7px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); }
+.log li.ok   { border-left-color: var(--ink); }
+.log li.warn { border-left-color: var(--ink-2); }
+.log li.ng   { border-left-color: var(--ink); border-left-style: dashed; }
+.log li.ok::before   { content: "✓ "; font-weight: 700; }
+.log li.warn::before { content: "! "; font-weight: 700; }
+.log li.ng::before   { content: "× "; font-weight: 700; }
 
 /* ---------- ダイアログ ---------- */
 .dialog {

@@ -94,6 +94,15 @@ export const api = {
     rpc('dash_dimension', { ...base(f), p_dim: dim, p_limit: limit, p_affiliate: affiliate }),
   affiliateDetail: (affiliateId, f) =>
     rpc('dash_affiliate_detail', { p_affiliate: affiliateId, ...base(f) }),
+  compare: (f, dim, keys, grain = 'day', limit = 5) =>
+    rpc('dash_compare', {
+      p_from: f.from, p_to: f.to,
+      p_statuses: f.statuses?.length ? f.statuses : null,
+      p_dim: dim,
+      p_keys: keys?.length ? keys : null,
+      p_grain: grain,
+      p_limit: limit,
+    }),
   conversions: (f, search, limit, offset) =>
     rpc('dash_conversions', { ...base(f), p_search: search || null, p_limit: limit, p_offset: offset }),
   imports:   (limit = 50)        => rpc('dash_imports', { p_limit: limit }),

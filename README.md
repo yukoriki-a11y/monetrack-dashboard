@@ -192,7 +192,7 @@ js/importer.js      取り込み画面のロジック
 js/charts.js        Chart.js のラッパ（線・棒・円）
 js/table.js         並べ替えできる表
 js/util.js          数値・日付の整形、ハッシュ、CSV出力
-js/mypage.js        マイページ（自分で組み立てるダッシュボード）
+js/holiday.js       日本の祝日判定（法律の規則から計算）
 sql/schema.sql      Supabase 側の定義（テーブル・RLS・集計関数）。新規構築時はこれ1本でよい
 sql/002_compare.sql 比較タブ用の関数だけを既存プロジェクトに追加する差分
 sql/003_status_merge.sql 再取り込み時のステータス判定を入れ替える差分

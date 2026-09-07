@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609080135">
+<link rel="stylesheet" href="css/app.css?v=202609080153">
 </head>
 <body>
 
@@ -61,19 +61,14 @@
     <div class="brand">
       <img class="logo" src="assets/monetrack-logo.jpg" alt="マネートラック">
       <span class="brand-text">アフィリエイト分析</span>
+      <button id="nav-toggle" class="nav-toggle" title="メニューの開閉" aria-label="メニューの開閉">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
     </div>
 
     <button class="tab is-active" data-view="summary">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span>サマリー</span>
-    </button>
-    <button class="tab" data-view="mypage">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/><circle cx="12" cy="12" r="9"/></svg>
-      <span>マイページ</span>
-    </button>
-    <button class="tab" data-view="trend">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg>
-      <span>推移</span>
     </button>
     <button class="tab" data-view="compare">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l5-9 4 5 4-8 5 12"/><path d="M3 21h18"/></svg>
@@ -111,23 +106,21 @@
   <div class="content">
 
     <div class="filterbar" id="filterbar">
-      <!-- 期間: 月をカタカタ選ぶ + 過去1週間 / 全期間 -->
+      <!-- 期間: 月を選ぶ / 過去1週間・全期間 / 開始日〜終了日 -->
       <div class="fb-group">
-        <input type="month" id="f-month" aria-label="表示する年月">
+        <select id="f-month" aria-label="表示する年月"></select>
         <div class="seg" id="presets">
           <button class="chip" data-preset="7">過去1週間</button>
           <button class="chip" data-preset="all">全期間</button>
         </div>
       </div>
 
-      <details class="dropdown" id="f-range-dd">
-        <summary id="f-range-label">期間を指定</summary>
-        <div class="menu narrow">
-          <label class="inline">開始 <input type="date" id="f-from"></label>
-          <label class="inline">終了 <input type="date" id="f-to"></label>
-          <button id="f-apply" class="btn primary sm">この期間で表示</button>
-        </div>
-      </details>
+      <div class="fb-group">
+        <input type="date" id="f-from" aria-label="開始日">
+        <span class="dash">〜</span>
+        <input type="date" id="f-to" aria-label="終了日">
+        <button id="f-apply" class="btn primary sm">反映</button>
+      </div>
 
       <div class="fb-group" id="f-status"></div>
 
@@ -170,20 +163,6 @@
           <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
         </div>
       </section>
-
-      <!-- マイページ（自分で組み立てる） -->
-      <section class="view v-mypage" data-view="mypage" hidden>
-        <div class="mp-bar">
-          <div class="row">
-            <button id="mp-add" class="btn primary sm">＋ グラフを追加</button>
-            <button id="mp-export" class="btn sm">CSV</button>
-            <button id="mp-reset" class="btn link">初期状態に戻す</button>
-          </div>
-          <span class="muted small">軸・指標・グラフ種類を選んで自由に並べられます。並びはこのブラウザに保存されます。</span>
-        </div>
-        <div class="mp-board" id="mp-board"></div>
-      </section>
-
       <!-- 比較: 選んだアフィリエイター/広告主の動きを線グラフで重ねる -->
       <section class="view v-compare" data-view="compare" hidden>
         <div class="card cmp-pick">
@@ -229,32 +208,6 @@
             <button class="btn sm" data-export="compare">CSV</button>
           </div>
           <div class="table-wrap"><table id="t-compare"></table></div>
-        </div>
-      </section>
-
-      <!-- 推移 -->
-      <section class="view v-trend" data-view="trend" hidden>
-        <div class="card span3">
-          <div class="card-head">
-            <h2>期間推移</h2>
-            <div class="seg" id="grain">
-              <button class="chip is-active" data-grain="day">日</button>
-              <button class="chip" data-grain="week">週</button>
-              <button class="chip" data-grain="month">月</button>
-            </div>
-          </div>
-          <div class="chart-wrap"><canvas id="c-trend-main"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>売上・報酬</h2>
-          <div class="chart-wrap"><canvas id="c-trend-money"></canvas></div>
-        </div>
-        <div class="card span2">
-          <div class="card-head">
-            <h2>CVR 推移</h2>
-            <button class="btn sm" data-export="trend">CSV</button>
-          </div>
-          <div class="chart-wrap"><canvas id="c-trend-cvr"></canvas></div>
         </div>
       </section>
 
@@ -405,42 +358,12 @@
 
     </main>
   </div>
-
-  <!-- マイページ: グラフの追加・編集 -->
-  <dialog id="mp-dialog" class="dialog">
-    <form id="mp-form" method="dialog">
-      <h2 id="mp-dialog-title">グラフを追加</h2>
-
-      <label>グラフの種類
-        <select id="mp-chart"></select>
-      </label>
-      <label id="mp-dim-row">何ごとに見るか（軸）
-        <select id="mp-dim"></select>
-      </label>
-      <label>何を見るか（指標）
-        <select id="mp-metric"></select>
-      </label>
-      <label id="mp-limit-row">表示件数
-        <input id="mp-limit" type="number" min="3" max="50" step="1">
-      </label>
-      <label>大きさ
-        <select id="mp-size"></select>
-      </label>
-
-      <p class="muted small" id="mp-hint"></p>
-      <div class="dialog-foot">
-        <button type="button" id="mp-cancel" class="btn">キャンセル</button>
-        <button type="submit" class="btn primary">決定</button>
-      </div>
-    </form>
-  </dialog>
-
   <div id="toast" class="toast" hidden></div>
   <div id="busy" class="busy" hidden><div class="spinner"></div></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609080135"></script>
+<script type="module" src="js/app.js?v=202609080153"></script>
 </body>
 </html>

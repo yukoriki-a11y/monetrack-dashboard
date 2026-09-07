@@ -1,12 +1,11 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080135';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080135';
-import * as ch from './charts.js?v=202609080135';
-import { renderTable, resetSort } from './table.js?v=202609080135';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080135';
-import { initMyPage, renderMyPage, exportMyPage } from './mypage.js?v=202609080135';
-import { dayKind, holidayName } from './holiday.js?v=202609080135';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080153';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080153';
+import * as ch from './charts.js?v=202609080153';
+import { renderTable, resetSort } from './table.js?v=202609080153';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080153';
+import { dayKind, holidayName } from './holiday.js?v=202609080153';
 
 // ---- 状態 --------------------------------------------------------------
 
@@ -28,7 +27,6 @@ const state = {
     rows: [],
     totals: [],
   },
-  trendRows: [],
   dimRows: [],
   srcRows: [],
   selectedAffiliate: null,
@@ -162,13 +160,11 @@ async function startApp(user) {
   });
 
   wireTabs();
+  wireNavToggle();
+  buildMonthOptions();
   wireFilters();
   wireViewControls();
   initImporter({ onImported: async () => { await loadMeta(); await render(); } });
-  initMyPage({
-    getFilter: () => state.filter,
-    rerender: () => renderMyPage(state.filter),
-  });
 
   await loadMeta();
   // データがあれば全期間、無ければ直近30日を初期表示にする
@@ -192,12 +188,33 @@ function wireTabs() {
   });
 }
 
+// ---- 左ナビの開閉 ------------------------------------------------------
+// 畳んだ状態はこのブラウザに覚えさせる。
+// 幅が足りない画面では自動で畳む（手動で開いていても物理的に入らないので）。
+const LS_NAV = 'afd.navCollapsed';
+const NAV_NARROW = 1180;
+
+function wireNavToggle() {
+  let manual = localStorage.getItem(LS_NAV) === '1';
+
+  const apply = () => {
+    $('#app').classList.toggle('nav-collapsed', manual || innerWidth <= NAV_NARROW);
+  };
+
+  $('#nav-toggle').addEventListener('click', () => {
+    manual = !$('#app').classList.contains('nav-collapsed');
+    localStorage.setItem(LS_NAV, manual ? '1' : '0');
+    apply();
+  });
+  addEventListener('resize', debounce(apply, 150));
+  apply();
+}
+
 function wireFilters() {
   $('#f-apply').addEventListener('click', () => {
     readFilterInputs();
     $('#f-month').value = '';
     $$('#presets .chip').forEach((c) => c.classList.remove('is-active'));
-    $('#f-range-dd').open = false;
     render();
   });
   $('#presets').addEventListener('click', (e) => {
@@ -237,14 +254,6 @@ function wireViewControls() {
     localStorage.setItem(LS_MT_RATE, String(mtRate()));
     resetSort($('#t-summary'));
     render();
-  });
-
-  $('#grain').addEventListener('click', (e) => {
-    const btn = e.target.closest('.chip');
-    if (!btn) return;
-    $$('#grain .chip').forEach((c) => c.classList.toggle('is-active', c === btn));
-    state.grain = btn.dataset.grain;
-    renderTrend();
   });
 
   $('#dim').addEventListener('click', (e) => {
@@ -311,12 +320,6 @@ function wireViewControls() {
   $('#detail-allcols').addEventListener('change', () => {
     resetSort($('#t-detail'));
     renderDetail();
-  });
-  $('#mp-export').addEventListener('click', async () => {
-    busy(true);
-    try { await exportMyPage(state.filter); }
-    catch (e) { toast(e.message); }
-    finally { busy(false); }
   });
   $('#detail-prev').addEventListener('click', () => {
     if (state.detail.page > 0) { state.detail.page -= 1; renderDetail(); }
@@ -502,9 +505,26 @@ function applyPreset(preset) {
   $('#f-month').value = '';
 }
 
+// 月の選択肢を作る。新しい月が上、いちばん下が 2025/1。
+const MONTH_FLOOR = { year: 2025, month: 1 };
+
+function buildMonthOptions() {
+  const sel = $('#f-month');
+  const now = new Date();
+  const opts = [el('option', { value: '', text: '月を選ぶ' })];
+  for (let y = now.getFullYear(), m = now.getMonth() + 1;
+    y > MONTH_FLOOR.year || (y === MONTH_FLOOR.year && m >= MONTH_FLOOR.month);) {
+    const value = `${y}-${String(m).padStart(2, '0')}`;
+    opts.push(el('option', { value, text: `${y}/${m}` }));
+    m -= 1;
+    if (m === 0) { m = 12; y -= 1; }
+  }
+  sel.replaceChildren(...opts);
+}
+
 // 年月（YYYY-MM）→ その月の1日〜末日
 function applyMonth(value) {
-  const m = /^(\d{4})-(\d{2})$/.exec(value || '');
+  const m = /^(\d{4})-(\d{1,2})$/.exec(value || '');
   if (!m) return;
   const year = Number(m[1]);
   const month = Number(m[2]);
@@ -527,9 +547,7 @@ async function render() {
   busy(true);
   try {
     if (state.view === 'summary')         await renderSummary();
-    else if (state.view === 'mypage')     await renderMyPage(state.filter);
     else if (state.view === 'compare')    await renderCompare();
-    else if (state.view === 'trend')      await renderTrend();
     else if (state.view === 'affiliates') await renderAffiliates();
     else if (state.view === 'products')   await renderProducts();
     else if (state.view === 'sources')    await renderSources();
@@ -646,28 +664,6 @@ function renderKpis(sel, items) {
     el('div', { class: 'v', text: i.v }),
     i.s ? el('div', { class: 's', text: i.s }) : null,
   )));
-}
-
-// ---- 推移 --------------------------------------------------------------
-
-async function renderTrend() {
-  const ts = await api.timeseries(state.filter, state.grain);
-  state.trendRows = ts;
-  const labels = ts.map((r) => (state.grain === 'month' ? r.bucket.slice(0, 7) : r.bucket.slice(5)));
-
-  ch.bar('c-trend-main', labels, [
-    { label: 'クリック数', data: ts.map((r) => r.clicks), color: ch.color(1) + 'cc' },
-    { label: '成果件数', data: ts.map((r) => r.conversions), type: 'line', axis: 'y1', color: ch.color(0) },
-  ], { yTitle: 'クリック', y1Title: '成果' });
-
-  ch.line('c-trend-money', labels, [
-    { label: '売上', data: ts.map((r) => r.sales), fill: true, color: ch.color(2) },
-    { label: '報酬額', data: ts.map((r) => r.reward), color: ch.color(1) },
-  ], { money: true });
-
-  ch.line('c-trend-cvr', labels, [
-    { label: 'CVR (%)', data: ts.map((r) => r.cvr), color: ch.color(3) },
-  ]);
 }
 
 // ---- 比較 --------------------------------------------------------------
@@ -1010,10 +1006,6 @@ function exportCsv(kind) {
       [dimLabel, 'クリック', '成果', 'CVR(%)', '売上', '報酬額', '稼働日数'],
       (state.compare.totals || []).map((r) =>
         [r.series, r.clicks, r.conversions, r.cvr, r.sales, r.reward, r.days]));
-  } else if (kind === 'trend') {
-    downloadCsv(`推移_${stamp}.csv`,
-      ['期間', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],
-      (state.trendRows || []).map((r) => [r.bucket, r.clicks, r.conversions, r.cvr, r.sales, r.reward]));
   } else if (kind === 'sources') {
     downloadCsv(`流入元別_${stamp}.csv`,
       ['リファラ', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],

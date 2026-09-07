@@ -171,13 +171,13 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
 }
 
 /* ---------- 左の縦ナビ ---------- */
+/* タブの数に依存しないよう flex で組む（増減しても崩れない） */
 .sidebar {
   background: var(--nav);
   padding: 12px 10px;
-  display: grid;
-  grid-template-rows: auto repeat(7, auto) 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 2px;
-  align-content: start;
   overflow: hidden;
 }
 
@@ -202,6 +202,44 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
   display: block;
 }
 .logo.lg { width: 38px; height: 38px; }
+
+/* メニューの開閉ボタン */
+.nav-toggle {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 3px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.nav-toggle:hover { background: var(--panel-2); color: var(--ink); }
+.nav-toggle svg {
+  width: 16px; height: 16px;
+  stroke: currentColor; fill: none;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* 畳んだ状態。アイコンだけにする。
+   狭い画面でも同じ見た目にしたいので、メディアクエリではなく
+   class で切り替えて JS 側から付け外しする。 */
+#app.nav-collapsed { --nav-w: 52px; }
+#app.nav-collapsed .brand-text,
+#app.nav-collapsed .brand .logo,
+#app.nav-collapsed .tab span,
+#app.nav-collapsed .sidebar-foot #who,
+#app.nav-collapsed .sidebar-foot #build { display: none; }
+#app.nav-collapsed .tab { justify-content: center; padding: 9px 0; }
+#app.nav-collapsed .brand { justify-content: center; padding: 4px 0 12px; }
+#app.nav-collapsed .nav-toggle { margin: 0; }
+#app.nav-collapsed .nav-toggle svg { transform: rotate(180deg); }
+#app.nav-collapsed .sidebar { padding: 12px 6px; }
+#app.nav-collapsed .sidebar-foot { padding: 10px 0 0; justify-items: center; }
+#app.nav-collapsed .sidebar-foot .btn.link { justify-self: center; }
 
 .tab {
   appearance: none;
@@ -235,7 +273,7 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
 }
 
 .sidebar-foot {
-  align-self: end;
+  margin-top: auto;
   display: grid;
   gap: 2px;
   padding: 10px;
@@ -437,23 +475,6 @@ table.matrix thead th.rowhead { z-index: 4; }
 /* 直近の列を少し強調する */
 table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 
-/* マイページ */
-.v-mypage { grid-template-rows: auto minmax(0, 1fr); }
-.mp-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.mp-board {
-  display: grid;
-  gap: var(--gap);
-  min-height: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: minmax(220px, 1fr);
-  overflow: auto;                /* カードが増えたらここだけスクロール */
-  padding-right: 2px;
-}
-.mp-card .mp-tools .btn.link { padding: 2px 5px; font-size: 12px; }
-.mp-empty { grid-column: 1 / -1; place-content: center; text-align: center; }
-.mp-kpi { display: grid; place-items: center; min-height: 0; }
-.mp-kpi .v { font-size: clamp(26px, 5vw, 46px); font-weight: 700; font-variant-numeric: tabular-nums; }
-
 /* 比較: 左に選択リスト、右に重ねた線グラフ、下に合計表 */
 .v-compare {
   grid-template-columns: minmax(220px, .8fr) repeat(2, minmax(0, 1fr));
@@ -483,12 +504,6 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 .cmp-list label:hover { background: var(--panel); }
 .cmp-list .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .cmp-list .cmp-sub { margin-left: auto; color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
-
-/* 推移: 大きい推移グラフ + 2枚 */
-.v-trend {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1.3fr) minmax(0, 1fr);
-}
 
 /* アフィリエイター: 左に一覧、右に内訳
    概要パネルと内訳パネルは常にどちらか一方だけを表示するので、行は 1 本のまま。
@@ -695,23 +710,13 @@ td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-sp
    俯瞰用のグリッドは物理的に入らないので、素直に積んでスクロールさせる
    ===================================================================== */
 
-/* ナビをアイコンだけに縮める */
-@media (max-width: 1180px) {
-  :root { --nav-w: 52px; }
-  .brand-text, .tab span, .sidebar-foot #who { display: none; }
-  .tab { justify-content: center; padding: 9px 0; }
-  .brand { justify-content: center; padding: 4px 0 12px; }
-  .sidebar { padding: 12px 6px; }
-  .sidebar-foot { padding: 10px 0 0; justify-items: center; }
-  .sidebar-foot .btn.link { justify-self: center; }
-}
+/* ナビの畳み込みは #app.nav-collapsed で行う（JS が幅を見て付け外しする）。
+   ここでメディアクエリを使うと、手動の開閉と競合するため。 */
 
 /* 3列が入らない幅: 2列に */
 @media (max-width: 1080px) {
-  .v-summary, .v-trend, .v-products, .mp-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .v-products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span3 { grid-column: span 2; }
-  .v-summary { grid-template-rows: auto minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); }
-  .v-trend { grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr); }
 }
 
 /* 縦に余裕がない、または横幅が足りない: 1画面主義をやめて積む */
@@ -732,13 +737,12 @@ td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-sp
   .tab span { display: inline; }
   .tab { padding: 8px 10px; }
   #main { overflow: visible; }
-  .view, .grid-2, .aff-right, .mp-board {
+  .view, .grid-2, .aff-right {
     height: auto;
     grid-template-columns: minmax(0, 1fr) !important;
     grid-template-rows: none !important;
     grid-auto-rows: auto;
   }
-  .mp-board { overflow: visible; }
   .span2, .span3, #aff-detail .sub.span2 { grid-column: span 1; }
   .card { grid-template-rows: none; }
   .chart-wrap { height: 240px; }

@@ -1,17 +1,26 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080153';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080153';
-import * as ch from './charts.js?v=202609080153';
-import { renderTable, resetSort } from './table.js?v=202609080153';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080153';
-import { dayKind, holidayName } from './holiday.js?v=202609080153';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080159';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080159';
+import * as ch from './charts.js?v=202609080159';
+import { renderTable, resetSort } from './table.js?v=202609080159';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080159';
+import { dayKind, holidayName } from './holiday.js?v=202609080159';
 
 // ---- 状態 --------------------------------------------------------------
 
+// フィルタはページごとに別々に持つ。
+// サマリーで8月を見ながら、成果明細では9月を見る、といった使い分けができる。
+// タブを戻すと、そのページで見ていた条件に戻る。
+const newFilter = () => ({
+  from: null, to: null, month: '', preset: '',
+  statuses: [], advertisers: [], affiliates: [],
+});
+
 const state = {
   view: 'summary',
-  filter: { from: null, to: null, statuses: [], advertisers: [], affiliates: [] },
+  filters: {},          // ビュー名 → フィルタ
+  filter: newFilter(),  // いま見ているビューのフィルタ（filters の中身への参照）
   meta: null,           // dash_filters の結果
   grain: 'day',
   dim: 'product',
@@ -167,10 +176,13 @@ async function startApp(user) {
   initImporter({ onImported: async () => { await loadMeta(); await render(); } });
 
   await loadMeta();
-  // データがあれば全期間、無ければ直近30日を初期表示にする
-  const initial = state.meta?.cv_date_min || state.meta?.ck_date_min ? 'all' : '30';
+
+  // 最初のページ（サマリー）の初期条件。データがあれば全期間で始める。
+  state.filters.summary = state.filter;
+  const initial = state.meta?.cv_date_min || state.meta?.ck_date_min ? 'all' : '7';
   $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === initial));
   applyPreset(initial);
+  $('#filter-scope').textContent = `${VIEW_LABEL.summary}の条件`;
   await render();
 }
 
@@ -178,15 +190,66 @@ function wireTabs() {
   $('#tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab');
     if (!btn) return;
-    state.view = btn.dataset.view;
-    $$('.tab').forEach((t) => t.classList.toggle('is-active', t === btn));
-    // hidden を外してから render する。Chart.js は非表示の器で初期化すると
-    // 0x0 に固定され、あとから resize しても戻らないため順序が重要。
-    $$('.view').forEach((v) => { v.hidden = v.dataset.view !== state.view; });
-    $('#filterbar').hidden = state.view === 'import';
-    render();
+    if (btn.dataset.view === state.view) return;
+
+    // 出ていくページの条件を確定させてから切り替える
+    if (state.view !== 'import') readFilterInputs();
+    switchView(btn.dataset.view);
   });
 }
+
+function switchView(view) {
+  state.view = view;
+  state.filter = filterFor(view);
+
+  $$('.tab').forEach((t) => t.classList.toggle('is-active', t.dataset.view === view));
+  // hidden を外してから render する。Chart.js は非表示の器で初期化すると
+  // 0x0 に固定され、あとから resize しても戻らないため順序が重要。
+  $$('.view').forEach((v) => { v.hidden = v.dataset.view !== view; });
+  $('#filterbar').hidden = view === 'import';
+
+  if (view !== 'import') syncFilterUI();
+  render();
+}
+
+// そのページのフィルタを取り出す。初めて開くページは、
+// いま見ている条件を引き継いで始める（毎回ゼロからだと面倒なので）。
+function filterFor(view) {
+  if (!state.filters[view]) {
+    const base = state.filter;
+    state.filters[view] = base
+      ? {
+        ...base,
+        statuses: [...base.statuses],
+        advertisers: [...base.advertisers],
+        affiliates: [...base.affiliates],
+      }
+      : newFilter();
+  }
+  return state.filters[view];
+}
+
+// フィルタ帯の見た目を、いま見ているページの条件に合わせる
+function syncFilterUI() {
+  const f = state.filter;
+  $('#f-from').value = f.from || '';
+  $('#f-to').value = f.to || '';
+  $('#f-month').value = f.month || '';
+  $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === f.preset));
+  $('#filter-scope').textContent = `${VIEW_LABEL[state.view] || ''}の条件`;
+  buildStatusBoxes();
+  buildPicker('advertiser', state.meta?.advertisers || []);
+  buildPicker('affiliate', state.meta?.affiliates || []);
+}
+
+const VIEW_LABEL = {
+  summary: 'サマリー',
+  compare: '比較',
+  affiliates: 'アフィリエイター',
+  products: '商品・広告',
+  sources: '流入元',
+  detail: '成果明細',
+};
 
 // ---- 左ナビの開閉 ------------------------------------------------------
 // 畳んだ状態はこのブラウザに覚えさせる。
@@ -212,9 +275,12 @@ function wireNavToggle() {
 
 function wireFilters() {
   $('#f-apply').addEventListener('click', () => {
-    readFilterInputs();
+    // 日付を直接いじった場合は、月やプリセットの選択を外す
+    state.filter.month = '';
+    state.filter.preset = '';
     $('#f-month').value = '';
     $$('#presets .chip').forEach((c) => c.classList.remove('is-active'));
+    readFilterInputs();
     render();
   });
   $('#presets').addEventListener('click', (e) => {
@@ -354,21 +420,7 @@ async function loadMeta() {
   }
   const m = state.meta;
 
-  // ステータスのチェックボックス（確定/保留を切り替えるフィルタ）
-  const box = $('#f-status');
-  const prev = new Set(state.filter.statuses);
-  box.replaceChildren();
-  const statuses = m.statuses || [];
-  for (const s of statuses) {
-    const id = 'st-' + s;
-    const cb = el('input', { type: 'checkbox', id, value: s });
-    cb.checked = prev.size ? prev.has(s) : true;
-    cb.addEventListener('change', () => { readFilterInputs(); render(); });
-    box.append(el('label', { class: 'inline check' }, cb, s));
-  }
-  if (!statuses.length) box.append(el('span', { class: 'muted small', text: 'データ未取込' }));
-
-  // 広告主・アフィリエイター（チェックボックス＋お気に入り。何も選ばなければ「全て」）
+  buildStatusBoxes();
   buildPicker('advertiser', m.advertisers || []);
   buildPicker('affiliate', m.affiliates || []);
 
@@ -380,6 +432,22 @@ async function loadMeta() {
   readFilterInputs();
   updatePickerLabel('advertiser');
   updatePickerLabel('affiliate');
+}
+
+// ステータスのチェックボックス。いま見ているページの条件を反映する。
+// 何も選んでいない状態（初期）は「全部オン」として扱う。
+function buildStatusBoxes() {
+  const box = $('#f-status');
+  const statuses = state.meta?.statuses || [];
+  const picked = new Set(state.filter.statuses);
+  box.replaceChildren();
+  for (const s of statuses) {
+    const cb = el('input', { type: 'checkbox', value: s });
+    cb.checked = picked.size ? picked.has(s) : true;
+    cb.addEventListener('change', () => { readFilterInputs(); render(); });
+    box.append(el('label', { class: 'inline check' }, cb, s));
+  }
+  if (!statuses.length) box.append(el('span', { class: 'muted small', text: 'データ未取込' }));
 }
 
 function readFilterInputs() {
@@ -493,16 +561,18 @@ function applyPreset(preset) {
   const m = state.meta || {};
   const today = new Date();
 
+  state.filter.preset = preset;
+  state.filter.month = '';
+  $('#f-month').value = '';
+
   if (preset === 'all') {
     const mins = [m.cv_date_min, m.ck_date_min].filter(Boolean).sort();
     const maxs = [m.cv_date_max, m.ck_date_max].filter(Boolean).sort();
     setRange(mins[0] || ymd(addDays(today, -30)), maxs[maxs.length - 1] || ymd(today));
-    $('#f-month').value = '';
     return;
   }
   // 過去1週間（今日を含む7日）
   setRange(ymd(addDays(today, -(Number(preset) - 1))), ymd(today));
-  $('#f-month').value = '';
 }
 
 // 月の選択肢を作る。新しい月が上、いちばん下が 2025/1。
@@ -528,8 +598,10 @@ function applyMonth(value) {
   if (!m) return;
   const year = Number(m[1]);
   const month = Number(m[2]);
-  setRange(ymd(new Date(year, month - 1, 1)), ymd(new Date(year, month, 0)));
+  state.filter.month = value;
+  state.filter.preset = '';
   $$('#presets .chip').forEach((c) => c.classList.remove('is-active'));
+  setRange(ymd(new Date(year, month - 1, 1)), ymd(new Date(year, month, 0)));
 }
 
 function setRange(from, to) {

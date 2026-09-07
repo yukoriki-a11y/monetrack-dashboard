@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609080153">
+<link rel="stylesheet" href="css/app.css?v=202609080159">
 </head>
 <body>
 
@@ -105,7 +105,10 @@
   <!-- 右側 = フィルタ + 表示領域 -->
   <div class="content">
 
+    <!-- フィルタはページごとに別々の条件を持つ（タブを戻すとその条件に戻る） -->
     <div class="filterbar" id="filterbar">
+      <span class="fb-scope" id="filter-scope"></span>
+
       <!-- 期間: 月を選ぶ / 過去1週間・全期間 / 開始日〜終了日 -->
       <div class="fb-group">
         <select id="f-month" aria-label="表示する年月"></select>
@@ -364,6 +367,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609080153"></script>
+<script type="module" src="js/app.js?v=202609080159"></script>
 </body>
 </html>

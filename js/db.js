@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080229';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080246';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -102,9 +102,12 @@ export const api = {
       p_statuses: f.statuses?.length ? f.statuses : null,
       p_advertisers: f.advertisers?.length ? f.advertisers : null,
     }),
-  // advertisers を渡すとフィルタの広告主より優先する
-  // （「この広告主の中を誰が作っているか」を出すのに使う）
-  compare: (f, dim, keys, grain = 'day', limit = 5, advertisers = null) =>
+  // scope で絞り込みを上書きできる（フィルタの値より優先）。
+  // 「軸」と「絞り込み」を別に渡せるので、
+  //   軸=広告主 × アフィリエイターで絞る → 選んだ人の中の広告主内訳
+  //   軸=アフィリエイター × 広告主で絞る → 選んだ広告主の中の人別内訳
+  // の両方が出せる。
+  compare: (f, dim, keys, grain = 'day', limit = 5, scope = {}) =>
     rpc('dash_compare', {
       p_from: f.from, p_to: f.to,
       p_statuses: f.statuses?.length ? f.statuses : null,
@@ -112,9 +115,12 @@ export const api = {
       p_keys: keys?.length ? keys : null,
       p_grain: grain,
       p_limit: limit,
-      p_advertisers: advertisers?.length
-        ? advertisers
+      p_advertisers: scope.advertisers?.length
+        ? scope.advertisers
         : (f.advertisers?.length ? f.advertisers : null),
+      p_affiliates: scope.affiliates?.length
+        ? scope.affiliates
+        : (f.affiliates?.length ? f.affiliates : null),
     }),
   conversions: (f, search, limit, offset) =>
     rpc('dash_conversions', { ...base(f), p_search: search || null, p_limit: limit, p_offset: offset }),

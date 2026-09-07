@@ -623,7 +623,15 @@ create or replace function public.dash_conversions(
   limit greatest(p_limit, 1) offset greatest(p_offset, 0)
 $$;
 
--- 比較（広告主の絞り込みも効くようにした）
+-- 選んだ相手ごとの時系列を返す。
+--   p_dim         : 系列にする軸（'affiliate' | 'advertiser'）
+--   p_keys        : 系列を明示指定する場合のID配列。null なら売上上位を p_limit 件
+--   p_advertisers : 広告主で絞る
+--   p_affiliates  : アフィリエイターで絞る
+-- 「軸」と「絞り込み」を別に渡せるので、
+--   軸=広告主 × アフィリエイターで絞る → 選んだ人の中の広告主内訳
+--   軸=アフィリエイター × 広告主で絞る → 選んだ広告主の中の人別内訳
+-- の両方が出せる。
 create or replace function public.dash_compare(
   p_from date,
   p_to date,
@@ -632,7 +640,8 @@ create or replace function public.dash_compare(
   p_keys text[] default null,
   p_grain text default 'day',
   p_limit integer default 5,
-  p_advertisers text[] default null
+  p_advertisers text[] default null,
+  p_affiliates text[] default null
 ) returns table(
   series text, bucket date, conversions bigint,
   sales numeric, reward numeric, clicks bigint, cvr numeric
@@ -653,6 +662,7 @@ create or replace function public.dash_compare(
         and c.occurred_at <  public.jst_start(p_to + 1)
         and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
         and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
+        and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
         and (case p_dim when 'advertiser' then c.advertiser_id else c.affiliate_id end) is not null
       group by 1
       order by 2 desc
@@ -669,6 +679,7 @@ create or replace function public.dash_compare(
       and c.occurred_at <  public.jst_start(p_to + 1)
       and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
       and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
+      and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
       and (case p_dim when 'advertiser' then c.advertiser_id else c.affiliate_id end)
           in (select p.k from picked p)
     group by 1, 2
@@ -680,6 +691,7 @@ create or replace function public.dash_compare(
     where k2.clicked_at >= public.jst_start(p_from)
       and k2.clicked_at <  public.jst_start(p_to + 1)
       and (p_advertisers is null or array_length(p_advertisers, 1) is null or k2.advertiser_id = any(p_advertisers))
+      and (p_affiliates is null or array_length(p_affiliates, 1) is null or k2.affiliate_id = any(p_affiliates))
       and (case p_dim when 'advertiser' then k2.advertiser_id else k2.affiliate_id end)
           in (select p.k from picked p)
     group by 1, 2

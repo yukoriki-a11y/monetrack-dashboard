@@ -1,6 +1,6 @@
 // Chart.js の薄いラッパ。同じ canvas に描き直すときは古いインスタンスを破棄する。
 
-import { compact, num, yen } from './util.js?v=202609080229';
+import { compact, num, yen } from './util.js?v=202609080246';
 
 const registry = new Map();
 
@@ -117,7 +117,7 @@ export function line(canvasId, labels, series, opts = {}) {
         borderWidth: 2,
         pointRadius: labels.length > 45 ? 0 : 2.5,
         pointHoverRadius: 4,
-        tension: 0.25,
+        tension: 0,          // 点と点を直線でつなぐ（曲線にすると無い値を通ってしまう）
         fill: Boolean(s.fill),
         yAxisID: s.axis || 'y',
         spanGaps: true,
@@ -151,7 +151,7 @@ export function area(canvasId, labels, series, opts = {}) {
         borderWidth: 1,
         pointRadius: 0,
         pointHoverRadius: 3,
-        tension: 0.2,
+        tension: 0,          // 点と点を直線でつなぐ
         fill: true,
       })),
     },
@@ -211,7 +211,7 @@ export function bar(canvasId, labels, series, opts = {}) {
         borderColor: s.type === 'line' ? (s.color || color(i)) : undefined,
         borderWidth: s.type === 'line' ? 2 : 0,
         pointRadius: s.type === 'line' ? 0 : undefined,
-        tension: 0.25,
+        tension: 0,          // 点と点を直線でつなぐ（曲線にすると無い値を通ってしまう）
         order: s.type === 'line' ? 0 : 1,
       })),
     },

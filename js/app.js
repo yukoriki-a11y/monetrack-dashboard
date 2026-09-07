@@ -1,11 +1,11 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080229';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080229';
-import * as ch from './charts.js?v=202609080229';
-import { renderTable, resetSort } from './table.js?v=202609080229';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080229';
-import { dayKind, holidayName } from './holiday.js?v=202609080229';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080246';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080246';
+import * as ch from './charts.js?v=202609080246';
+import { renderTable, resetSort } from './table.js?v=202609080246';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080246';
+import { dayKind, holidayName } from './holiday.js?v=202609080246';
 
 // ---- 状態 --------------------------------------------------------------
 
@@ -746,12 +746,12 @@ async function renderCompare() {
   const picked = c.picked[c.dim];
   const metric = CMP_METRIC[c.metric];
 
-  // 面グラフは「合計の内訳」を見せるもの。
-  // 広告主を選んだときは、その広告主の中を誰が作っているのか（アフィリエイター別）で塗る。
-  // アフィリエイターを選んだときは、選んだ本人たちで塗る。
-  $('#cmp-title').textContent = byAdvertiser
-    ? `選んだ広告主の${metric.label} — アフィリエイター別の内訳`
-    : `${dimLabel}別の${metric.label}`;
+  // 面グラフは「合計の内訳」を見せるもの。塗り分けは常に“もう一方の軸”でやる。
+  //   広告主を選んだ    → 誰（アフィリエイター）が作っているかで塗る
+  //   アフィリエイターを選んだ → どこ（広告主）で稼いだかで塗る
+  const bandLabel = byAdvertiser ? 'アフィリエイター' : '広告主';
+  $('#cmp-title').textContent =
+    `選んだ${dimLabel}の${metric.label} — ${bandLabel}別の内訳`;
 
   if (!picked.length) {
     ch.line('c-compare', [], []);
@@ -761,9 +761,9 @@ async function renderCompare() {
 
   const rows = byAdvertiser
     // 選んだ広告主に絞って、その中の上位アフィリエイターを系列にする
-    ? await api.compare(state.filter, 'affiliate', null, c.grain, CMP_BANDS, picked)
-    // 選んだアフィリエイターをそのまま系列にする
-    : await api.compare(state.filter, 'affiliate', picked, c.grain, CMP_BANDS);
+    ? await api.compare(state.filter, 'affiliate', null, c.grain, CMP_BANDS, { advertisers: picked })
+    // 選んだアフィリエイターに絞って、その中の上位広告主を系列にする
+    : await api.compare(state.filter, 'advertiser', null, c.grain, CMP_BANDS, { affiliates: picked });
   c.rows = rows;
 
   // series × bucket の行を、系列ごとの配列に組み替える
@@ -807,8 +807,6 @@ function renderCompareList() {
   const box = $('#cmp-list');
   const current = c.picked[c.dim] ?? [];
   const picked = new Set(current);
-  // 広告主を選ぶモードでは、色はアフィリエイター側に付くので見本を出さない
-  const showSwatch = c.dim === 'affiliate';
 
   const list = c.candidates.filter((r) => !q || String(r.label).toLowerCase().includes(q));
   box.replaceChildren();
@@ -828,15 +826,9 @@ function renderCompareList() {
       render();
     });
 
-    const kids = [cb];
-    if (showSwatch) {
-      const idx = (c.order || []).indexOf(r.label);
-      const sw = el('span', { class: 'swatch' });
-      sw.style.background = idx >= 0 ? ch.color(idx) : 'var(--line-strong)';
-      kids.push(sw);
-    }
-    kids.push(r.label, el('span', { class: 'cmp-sub', text: '¥' + compact(r.sales) }));
-    box.append(el('label', {}, ...kids));
+    // 色は塗り分け側（もう一方の軸）に付くので、ここに見本は出さない
+    box.append(el('label', {}, cb, r.label,
+      el('span', { class: 'cmp-sub', text: '¥' + compact(r.sales) })));
   }
 }
 

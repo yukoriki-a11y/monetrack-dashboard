@@ -58,6 +58,10 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span>サマリー</span>
     </button>
+    <button class="tab" data-view="mypage">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/><circle cx="12" cy="12" r="9"/></svg>
+      <span>マイページ</span>
+    </button>
     <button class="tab" data-view="trend">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg>
       <span>推移</span>
@@ -120,31 +124,38 @@
 
     <main id="main">
 
-      <!-- サマリー -->
+      <!-- サマリー: KPI4つ + 見出しグラフ1枚 + 補助3枚 -->
       <section class="view v-summary" data-view="summary">
         <div class="kpis" id="kpis"></div>
-        <div class="board board-summary">
-          <div class="card span2">
-            <h2>日次推移（成果 / クリック）</h2>
-            <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
-          </div>
-          <div class="card">
-            <h2>ステータス内訳</h2>
-            <div class="chart-wrap"><canvas id="c-summary-status"></canvas></div>
-          </div>
-          <div class="card">
-            <h2>デバイス内訳</h2>
-            <div class="chart-wrap"><canvas id="c-summary-device"></canvas></div>
-          </div>
-          <div class="card">
-            <h2>広告主別 成果</h2>
-            <div class="chart-wrap"><canvas id="c-summary-adv"></canvas></div>
-          </div>
-          <div class="card">
-            <h2>アフィリエイター 売上 TOP10</h2>
-            <div class="chart-wrap"><canvas id="c-summary-aff"></canvas></div>
-          </div>
+        <div class="card span3">
+          <h2>日次推移（成果 / クリック）</h2>
+          <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
         </div>
+        <div class="card">
+          <h2>アフィリエイター 売上 TOP10</h2>
+          <div class="chart-wrap"><canvas id="c-summary-aff"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>商品 売上 TOP10</h2>
+          <div class="chart-wrap"><canvas id="c-summary-product"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>ステータス内訳</h2>
+          <div class="chart-wrap"><canvas id="c-summary-status"></canvas></div>
+        </div>
+      </section>
+
+      <!-- マイページ（自分で組み立てる） -->
+      <section class="view v-mypage" data-view="mypage" hidden>
+        <div class="mp-bar">
+          <div class="row">
+            <button id="mp-add" class="btn primary sm">＋ グラフを追加</button>
+            <button id="mp-export" class="btn sm">CSV</button>
+            <button id="mp-reset" class="btn link">初期状態に戻す</button>
+          </div>
+          <span class="muted small">軸・指標・グラフ種類を選んで自由に並べられます。並びはこのブラウザに保存されます。</span>
+        </div>
+        <div class="mp-board" id="mp-board"></div>
       </section>
 
       <!-- 推移 -->
@@ -164,13 +175,12 @@
           <h2>売上・報酬</h2>
           <div class="chart-wrap"><canvas id="c-trend-money"></canvas></div>
         </div>
-        <div class="card">
-          <h2>CVR 推移</h2>
+        <div class="card span2">
+          <div class="card-head">
+            <h2>CVR 推移</h2>
+            <button class="btn sm" data-export="trend">CSV</button>
+          </div>
           <div class="chart-wrap"><canvas id="c-trend-cvr"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>数値</h2>
-          <div class="table-wrap"><table id="t-trend"></table></div>
         </div>
       </section>
 
@@ -190,16 +200,8 @@
 
         <div class="aff-right">
           <div class="card" id="aff-overview">
-            <div class="grid-2">
-              <div class="sub">
-                <h2>クリック数 TOP15</h2>
-                <div class="chart-wrap"><canvas id="c-aff-clicks"></canvas></div>
-              </div>
-              <div class="sub">
-                <h2>売上 TOP15</h2>
-                <div class="chart-wrap"><canvas id="c-aff-sales"></canvas></div>
-              </div>
-            </div>
+            <h2>売上 TOP15</h2>
+            <div class="chart-wrap"><canvas id="c-aff-sales"></canvas></div>
           </div>
 
           <div class="card" id="aff-detail" hidden>
@@ -217,11 +219,7 @@
                 <h3>日別</h3>
                 <div class="chart-wrap"><canvas id="c-affd-daily"></canvas></div>
               </div>
-              <div class="sub">
-                <h3>広告別</h3>
-                <div class="table-wrap"><table id="t-affd-ads"></table></div>
-              </div>
-              <div class="sub">
+              <div class="sub span2">
                 <h3>商品別</h3>
                 <div class="table-wrap"><table id="t-affd-products"></table></div>
               </div>
@@ -232,7 +230,7 @@
 
       <!-- 商品・広告 -->
       <section class="view v-products" data-view="products" hidden>
-        <div class="card span2">
+        <div class="card span3">
           <div class="card-head">
             <h2 id="dim-chart-title">軸別 集計</h2>
             <div class="seg" id="dim">
@@ -245,32 +243,20 @@
           </div>
           <div class="chart-wrap"><canvas id="c-dim-bar"></canvas></div>
         </div>
-        <div class="card">
-          <h2>構成比</h2>
-          <div class="chart-wrap"><canvas id="c-dim-pie"></canvas></div>
-        </div>
-        <div class="card span2">
+        <div class="card span3">
           <div class="card-head">
             <h2 id="dim-table-title">明細</h2>
             <button class="btn sm" data-export="dimension">CSV</button>
           </div>
           <div class="table-wrap"><table id="t-dim"></table></div>
         </div>
-        <div class="card">
-          <h2>OS 内訳</h2>
-          <div class="chart-wrap"><canvas id="c-dim-os"></canvas></div>
-        </div>
       </section>
 
       <!-- 流入元 -->
       <section class="view v-sources" data-view="sources" hidden>
-        <div class="card">
-          <h2>リファラ別 クリック</h2>
+        <div class="card span2">
+          <h2>リファラ別 クリック / 成果</h2>
           <div class="chart-wrap"><canvas id="c-src-clicks"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>リファラ別 成果</h2>
-          <div class="chart-wrap"><canvas id="c-src-cv"></canvas></div>
         </div>
         <div class="card span2">
           <div class="card-head">
@@ -289,6 +275,10 @@
             <div class="row">
               <input id="detail-search" type="search" placeholder="商品名・広告名・アフィリエイターID・注文ID・リファラ">
               <button id="detail-go" class="btn primary sm">検索</button>
+              <label class="inline check">
+                <input type="checkbox" id="detail-allcols">
+                全列
+              </label>
               <button class="btn sm" data-export="conversions">CSV</button>
               <span class="muted small" id="detail-count"></span>
             </div>
@@ -341,6 +331,35 @@
 
     </main>
   </div>
+
+  <!-- マイページ: グラフの追加・編集 -->
+  <dialog id="mp-dialog" class="dialog">
+    <form id="mp-form" method="dialog">
+      <h2 id="mp-dialog-title">グラフを追加</h2>
+
+      <label>グラフの種類
+        <select id="mp-chart"></select>
+      </label>
+      <label id="mp-dim-row">何ごとに見るか（軸）
+        <select id="mp-dim"></select>
+      </label>
+      <label>何を見るか（指標）
+        <select id="mp-metric"></select>
+      </label>
+      <label id="mp-limit-row">表示件数
+        <input id="mp-limit" type="number" min="3" max="50" step="1">
+      </label>
+      <label>大きさ
+        <select id="mp-size"></select>
+      </label>
+
+      <p class="muted small" id="mp-hint"></p>
+      <div class="dialog-foot">
+        <button type="button" id="mp-cancel" class="btn">キャンセル</button>
+        <button type="submit" class="btn primary">決定</button>
+      </div>
+    </form>
+  </dialog>
 
   <div id="toast" class="toast" hidden></div>
   <div id="busy" class="busy" hidden><div class="spinner"></div></div>

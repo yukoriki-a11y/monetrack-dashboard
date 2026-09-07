@@ -5,6 +5,7 @@ import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser
 import * as ch from './charts.js';
 import { renderTable, resetSort } from './table.js';
 import { initImporter, loadImportHistory } from './importer.js';
+import { initMyPage, renderMyPage, exportMyPage } from './mypage.js';
 
 // ---- 状態 --------------------------------------------------------------
 
@@ -15,6 +16,7 @@ const state = {
   grain: 'day',
   dim: 'product',
   affiliates: [],       // アフィリエイター一覧のキャッシュ
+  trendRows: [],
   dimRows: [],
   srcRows: [],
   selectedAffiliate: null,
@@ -146,6 +148,10 @@ async function startApp(user) {
   wireFilters();
   wireViewControls();
   initImporter({ onImported: async () => { await loadMeta(); await render(); } });
+  initMyPage({
+    getFilter: () => state.filter,
+    rerender: () => renderMyPage(state.filter),
+  });
 
   await loadMeta();
   // データがあれば全期間、無ければ直近30日を初期表示にする
@@ -217,6 +223,16 @@ function wireViewControls() {
   });
   $('#detail-search').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') $('#detail-go').click();
+  });
+  $('#detail-allcols').addEventListener('change', () => {
+    resetSort($('#t-detail'));
+    renderDetail();
+  });
+  $('#mp-export').addEventListener('click', async () => {
+    busy(true);
+    try { await exportMyPage(state.filter); }
+    catch (e) { toast(e.message); }
+    finally { busy(false); }
   });
   $('#detail-prev').addEventListener('click', () => {
     if (state.detail.page > 0) { state.detail.page -= 1; renderDetail(); }
@@ -330,6 +346,7 @@ async function render() {
   busy(true);
   try {
     if (state.view === 'summary')         await renderSummary();
+    else if (state.view === 'mypage')     await renderMyPage(state.filter);
     else if (state.view === 'trend')      await renderTrend();
     else if (state.view === 'affiliates') await renderAffiliates();
     else if (state.view === 'products')   await renderProducts();
@@ -345,25 +362,23 @@ async function render() {
 
 // ---- サマリー ----------------------------------------------------------
 
+// サマリーは「まず見るべき4つ」に絞る。
+// デバイス/OS/広告主などの細かい内訳は「マイページ」で自分で組み立てる。
 async function renderSummary() {
   const f = state.filter;
-  const [kpi, ts, status, device, adv, affs] = await Promise.all([
+  const [kpi, ts, status, products, affs] = await Promise.all([
     api.kpi(f),
     api.timeseries(f, 'day'),
     api.dimension(f, 'status', 20),
-    api.dimension(f, 'device', 20),
-    api.dimension(f, 'advertiser', 12),
+    api.dimension(f, 'product', 10),
     api.affiliates(f, 10),
   ]);
 
   renderKpis('#kpis', [
-    { k: '成果件数',   v: num(kpi.conversions), s: `${num(kpi.qty)} 点` },
-    { k: 'クリック数', v: num(kpi.clicks) },
-    { k: 'CVR',        v: kpi.cvr === null ? '—' : pct(kpi.cvr), s: kpi.cvr === null ? '同期間のクリック未取込' : null },
-    { k: '売上',       v: '¥' + compact(kpi.sales), s: yen(kpi.sales) },
-    { k: '報酬額',     v: '¥' + compact(kpi.reward), s: kpi.reward_ratio === null ? null : `売上比 ${pct(kpi.reward_ratio)}` },
-    { k: '平均単価',   v: yen(kpi.aov) },
-    { k: 'アフィリエイター', v: num(kpi.affiliates), s: `商品 ${num(kpi.products)} 種` },
+    { k: '成果件数', v: num(kpi.conversions), s: `クリック ${num(kpi.clicks)}` },
+    { k: '売上',     v: '¥' + compact(kpi.sales), s: yen(kpi.sales) },
+    { k: '報酬額',   v: '¥' + compact(kpi.reward), s: kpi.reward_ratio === null ? null : `売上比 ${pct(kpi.reward_ratio)}` },
+    { k: 'CVR',      v: kpi.cvr === null ? '—' : pct(kpi.cvr), s: kpi.cvr === null ? '同期間のクリック未取込' : `平均単価 ${yen(kpi.aov)}` },
   ]);
 
   const labels = ts.map((r) => r.bucket.slice(5));
@@ -372,17 +387,17 @@ async function renderSummary() {
     { label: 'クリック数', data: ts.map((r) => r.clicks), axis: 'y1', color: ch.color(1) },
   ], { yTitle: '成果', y1Title: 'クリック' });
 
-  ch.pie('c-summary-status', status.map((r) => r.label), status.map((r) => r.conversions));
-  ch.pie('c-summary-device', device.map((r) => r.label), device.map((r) => r.conversions));
-
-  ch.bar('c-summary-adv', adv.map((r) => r.label), [
-    { label: '成果件数', data: adv.map((r) => r.conversions) },
-  ], { horizontal: true });
-
   const top = affs.filter((r) => Number(r.sales) > 0).slice(0, 10);
   ch.bar('c-summary-aff', top.map((r) => r.affiliate_id), [
     { label: '売上', data: top.map((r) => r.sales), color: ch.color(2) },
   ], { horizontal: true, money: true });
+
+  const prod = products.filter((r) => Number(r.sales) > 0).slice(0, 10);
+  ch.bar('c-summary-product', prod.map((r) => r.label), [
+    { label: '売上', data: prod.map((r) => r.sales), color: ch.color(1) },
+  ], { horizontal: true, money: true });
+
+  ch.pie('c-summary-status', status.map((r) => r.label), status.map((r) => r.conversions));
 }
 
 function renderKpis(sel, items) {
@@ -398,6 +413,7 @@ function renderKpis(sel, items) {
 
 async function renderTrend() {
   const ts = await api.timeseries(state.filter, state.grain);
+  state.trendRows = ts;
   const labels = ts.map((r) => (state.grain === 'month' ? r.bucket.slice(0, 7) : r.bucket.slice(5)));
 
   ch.bar('c-trend-main', labels, [
@@ -413,26 +429,12 @@ async function renderTrend() {
   ch.line('c-trend-cvr', labels, [
     { label: 'CVR (%)', data: ts.map((r) => r.cvr), color: ch.color(3) },
   ]);
-
-  renderTable($('#t-trend'), [
-    { key: 'bucket', label: '期間', type: 'text', cellClass: 'num' },
-    { key: 'clicks', label: 'クリック', type: 'num' },
-    { key: 'conversions', label: '成果', type: 'num' },
-    { key: 'cvr', label: 'CVR', type: 'pct' },
-    { key: 'sales', label: '売上', type: 'yen' },
-    { key: 'reward', label: '報酬額', type: 'yen' },
-  ], ts, { sortKey: 'bucket', sortDir: 'asc' });
 }
 
 // ---- アフィリエイター --------------------------------------------------
 
 async function renderAffiliates() {
   state.affiliates = await api.affiliates(state.filter, 500);
-
-  const byClicks = state.affiliates.slice().sort((a, b) => b.clicks - a.clicks).slice(0, 15);
-  ch.bar('c-aff-clicks', byClicks.map((r) => r.affiliate_id), [
-    { label: 'クリック数', data: byClicks.map((r) => r.clicks), color: ch.color(1) },
-  ], { horizontal: true });
 
   const bySales = state.affiliates.slice().sort((a, b) => b.sales - a.sales).slice(0, 15);
   ch.bar('c-aff-sales', bySales.map((r) => r.affiliate_id), [
@@ -498,13 +500,6 @@ async function renderAffiliateDetail(affiliateId) {
       { label: '成果', data: daily.map((r) => r.cv), color: ch.color(0), fill: true },
     ]);
 
-    renderTable($('#t-affd-ads'), [
-      { key: 'label', label: '広告名', type: 'text' },
-      { key: 'clicks', label: 'クリック', type: 'num' },
-      { key: 'conversions', label: '成果', type: 'num' },
-      { key: 'sales', label: '売上', type: 'yen' },
-    ], d.ads || [], { sortKey: 'conversions', sortDir: 'desc' });
-
     renderTable($('#t-affd-products'), [
       { key: 'label', label: '商品名', type: 'text' },
       { key: 'conversions', label: '成果', type: 'num' },
@@ -525,10 +520,7 @@ const DIM_LABEL = {
 };
 
 async function renderProducts() {
-  const [rows, os] = await Promise.all([
-    api.dimension(state.filter, state.dim, 200),
-    api.dimension(state.filter, 'os', 20),
-  ]);
+  const rows = await api.dimension(state.filter, state.dim, 200);
   state.dimRows = rows;
 
   const label = DIM_LABEL[state.dim] || state.dim;
@@ -544,13 +536,6 @@ async function renderProducts() {
       { label: '売上', data: top.map((r) => r.sales), axis: 'y1', color: ch.color(2) },
     ],
   { horizontal: useClicks, y1Title: useClicks ? null : '売上' });
-
-  const pieRows = rows.slice(0, 10);
-  ch.pie('c-dim-pie',
-    pieRows.map((r) => (r.label.length > 24 ? r.label.slice(0, 23) + '…' : r.label)),
-    pieRows.map((r) => (useClicks ? r.clicks : r.conversions)));
-
-  ch.pie('c-dim-os', os.map((r) => r.label), os.map((r) => r.conversions || r.clicks));
 
   renderTable($('#t-dim'), [
     { key: 'label', label: label, type: 'text' },
@@ -574,14 +559,11 @@ async function renderSources() {
   const rows = (await api.dimension(state.filter, 'referrer', 200)).map(withCvr);
   state.srcRows = rows;
 
+  // クリックと成果を1枚にまとめて、流入元ごとの効率を並べて見られるようにする
   const byClicks = rows.slice().sort((a, b) => b.clicks - a.clicks).slice(0, 15);
   ch.bar('c-src-clicks', byClicks.map((r) => r.label), [
     { label: 'クリック', data: byClicks.map((r) => r.clicks), color: ch.color(1) },
-  ], { horizontal: true });
-
-  const byCv = rows.slice().sort((a, b) => b.conversions - a.conversions).slice(0, 15);
-  ch.bar('c-src-cv', byCv.map((r) => r.label), [
-    { label: '成果', data: byCv.map((r) => r.conversions) },
+    { label: '成果', data: byClicks.map((r) => r.conversions) },
   ], { horizontal: true });
 
   renderTable($('#t-src'), [
@@ -608,22 +590,31 @@ async function renderDetail() {
   $('#detail-prev').disabled = d.page === 0;
   $('#detail-next').disabled = d.page + 1 >= pages;
 
-  renderTable($('#t-detail'), [
+  // 既定は主要8列だけ。残りは「全列」で出す。
+  const core = [
     { key: 'occurred_at', label: '発生日時', render: (r) => fmtDateTime(r.occurred_at), cellClass: 'num' },
     { key: 'status', label: 'ステータス', render: (r) => statusBadge(r.status), cellClass: null },
     { key: 'advertiser_id', label: '広告主', type: 'text' },
     { key: 'affiliate_id', label: 'アフィリエイター', type: 'text' },
     { key: 'product_name', label: '商品名', type: 'text' },
-    { key: 'ad_name', label: '広告名', type: 'text' },
     { key: 'qty', label: '数量', type: 'num' },
     { key: 'sale_price', label: '販売価格', type: 'yen' },
     { key: 'reward', label: '報酬額', type: 'yen' },
+  ];
+  const extra = [
+    { key: 'ad_name', label: '広告名', type: 'text' },
+    { key: 'campaign', label: 'キャンペーン', type: 'text' },
     { key: 'reward_rate', label: '報酬率', type: 'text', cellClass: 'num' },
     { key: 'pay_status', label: '支払い', type: 'text' },
     { key: 'device', label: 'デバイス', type: 'text' },
+    { key: 'os', label: 'OS', type: 'text' },
     { key: 'first_referrer', label: '初回リファラ', type: 'text' },
     { key: 'order_id', label: '注文ID', type: 'text' },
-  ], rows, { sortKey: 'occurred_at', sortDir: 'desc', empty: '該当する成果がありません' });
+  ];
+  const cols = $('#detail-allcols').checked ? [...core, ...extra] : core;
+
+  renderTable($('#t-detail'), cols, rows,
+    { sortKey: 'occurred_at', sortDir: 'desc', empty: '該当する成果がありません' });
 }
 
 // ---- CSV 出力 ----------------------------------------------------------
@@ -639,6 +630,10 @@ function exportCsv(kind) {
     downloadCsv(`${label}別_${stamp}.csv`,
       [label, 'クリック', '成果', 'CVR(%)', '数量', '売上', '報酬額'],
       state.dimRows.map(withCvr).map((r) => [r.label, r.clicks, r.conversions, r.cvr, r.qty, r.sales, r.reward]));
+  } else if (kind === 'trend') {
+    downloadCsv(`推移_${stamp}.csv`,
+      ['期間', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],
+      (state.trendRows || []).map((r) => [r.bucket, r.clicks, r.conversions, r.cvr, r.sales, r.reward]));
   } else if (kind === 'sources') {
     downloadCsv(`流入元別_${stamp}.csv`,
       ['リファラ', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],

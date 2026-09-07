@@ -1,11 +1,11 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080159';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080159';
-import * as ch from './charts.js?v=202609080159';
-import { renderTable, resetSort } from './table.js?v=202609080159';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080159';
-import { dayKind, holidayName } from './holiday.js?v=202609080159';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080225';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080225';
+import * as ch from './charts.js?v=202609080225';
+import { renderTable, resetSort } from './table.js?v=202609080225';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080225';
+import { dayKind, holidayName } from './holiday.js?v=202609080225';
 
 // ---- 状態 --------------------------------------------------------------
 
@@ -36,9 +36,6 @@ const state = {
     rows: [],
     totals: [],
   },
-  dimRows: [],
-  srcRows: [],
-  selectedAffiliate: null,
   detail: { page: 0, size: 100, search: '', rows: [], total: 0 },
 };
 
@@ -244,7 +241,7 @@ function syncFilterUI() {
 
 const VIEW_LABEL = {
   summary: 'サマリー',
-  compare: '比較',
+  compare: '広告主/アフィリエイター',
   affiliates: 'アフィリエイター',
   products: '商品・広告',
   sources: '流入元',
@@ -296,20 +293,36 @@ function wireFilters() {
     render();
   });
 
-  // 開いたドロップダウン以外は閉じる。右端に近いものは左向きに開く。
+  // 開いたドロップダウン以外は閉じる。
+  // フィルタ帯を横スクロールさせている（=はみ出しが切られる）ので、
+  // メニューは position: fixed にして開いた瞬間に位置を計算する。
   const dds = $$('details.dropdown');
   for (const dd of dds) {
     dd.addEventListener('toggle', () => {
       if (!dd.open) return;
       for (const other of dds) if (other !== dd) other.open = false;
-      const rect = dd.getBoundingClientRect();
-      dd.classList.toggle('to-left', rect.left + 280 > innerWidth);
+      placeMenu(dd);
     });
   }
   document.addEventListener('click', (e) => {
     if (e.target.closest('details.dropdown')) return;
     for (const dd of dds) dd.open = false;
   });
+  addEventListener('resize', debounce(() => {
+    for (const dd of dds) if (dd.open) placeMenu(dd);
+  }, 100));
+}
+
+// ドロップダウンのメニューを、ボタンの真下（画面からはみ出すなら内側に寄せて）置く
+function placeMenu(dd) {
+  const menu = dd.querySelector('.menu');
+  const anchor = dd.querySelector('summary').getBoundingClientRect();
+  menu.style.top = `${anchor.bottom + 4}px`;
+  menu.style.left = '0px';        // 幅を測るためいったん左に置く
+  const width = menu.offsetWidth;
+  const left = Math.min(anchor.left, Math.max(8, innerWidth - width - 8));
+  menu.style.left = `${left}px`;
+  menu.style.maxHeight = `${Math.max(160, innerHeight - anchor.bottom - 20)}px`;
 }
 
 function wireViewControls() {
@@ -320,15 +333,6 @@ function wireViewControls() {
     localStorage.setItem(LS_MT_RATE, String(mtRate()));
     resetSort($('#t-summary'));
     render();
-  });
-
-  $('#dim').addEventListener('click', (e) => {
-    const btn = e.target.closest('.chip');
-    if (!btn) return;
-    $$('#dim .chip').forEach((c) => c.classList.toggle('is-active', c === btn));
-    state.dim = btn.dataset.dim;
-    resetSort($('#t-dim'));
-    renderProducts();
   });
 
   // 比較タブ
@@ -366,14 +370,6 @@ function wireViewControls() {
     render();
   });
 
-  $('#aff-search').addEventListener('input', debounce(() => renderAffiliateTable(), 200));
-  $('#aff-detail-close').addEventListener('click', () => {
-    state.selectedAffiliate = null;
-    $('#aff-detail').hidden = true;
-    // 内訳を閉じると一覧グラフが再表示される（CSS側で切り替え）。
-    // 隠れている間にキャンバスが潰れているので描き直す。
-    renderAffiliates();
-  });
 
   $('#detail-go').addEventListener('click', () => {
     state.detail.search = $('#detail-search').value.trim();
@@ -423,12 +419,6 @@ async function loadMeta() {
   buildStatusBoxes();
   buildPicker('advertiser', m.advertisers || []);
   buildPicker('affiliate', m.affiliates || []);
-
-  const range = [];
-  if (m.cv_date_min) range.push(`成果 ${m.cv_date_min}〜${m.cv_date_max}（${num(m.cv_rows)}件）`);
-  if (m.ck_date_min) range.push(`クリック ${m.ck_date_min}〜${m.ck_date_max}（${num(m.ck_rows)}件）`);
-  $('#data-range').textContent = range.join(' / ') || 'データがありません。「データ取込」から入れてください。';
-
   readFilterInputs();
   updatePickerLabel('advertiser');
   updatePickerLabel('affiliate');
@@ -620,9 +610,6 @@ async function render() {
   try {
     if (state.view === 'summary')         await renderSummary();
     else if (state.view === 'compare')    await renderCompare();
-    else if (state.view === 'affiliates') await renderAffiliates();
-    else if (state.view === 'products')   await renderProducts();
-    else if (state.view === 'sources')    await renderSources();
     else if (state.view === 'detail')     await renderDetail();
   } catch (e) {
     toast(e.message);
@@ -750,91 +737,79 @@ const CMP_METRIC = {
   cvr:         { label: 'CVR',      type: 'pct', money: false },
 };
 
+// 積み上げる帯の本数。増やしすぎると色が見分けられなくなる。
+const CMP_BANDS = 8;
+
 async function renderCompare() {
   const c = state.compare;
-  const dimLabel = c.dim === 'advertiser' ? '広告主' : 'アフィリエイター';
+  const byAdvertiser = c.dim === 'advertiser';
+  const dimLabel = byAdvertiser ? '広告主' : 'アフィリエイター';
 
-  // 選択候補の一覧（売上順）
+  // 選択候補（売上順）
   c.candidates = await api.dimension(state.filter, c.dim, 300);
 
-  // 初回だけ上位5件を自動で選ぶ。自分で空にした場合はそのまま空にしておく。
+  // 初回だけ上位を自動で選ぶ。自分で空にした場合はそのまま空にしておく。
   if (c.picked[c.dim] === null) {
-    c.picked[c.dim] = c.candidates.slice(0, 5).map((r) => r.label);
+    c.picked[c.dim] = c.candidates.slice(0, byAdvertiser ? 3 : 5).map((r) => r.label);
   }
   renderCompareList();
 
   const picked = c.picked[c.dim];
-  $('#cmp-title').textContent = `${dimLabel}の動き（${CMP_METRIC[c.metric].label}）`;
+  const metric = CMP_METRIC[c.metric];
+
+  // 面グラフは「合計の内訳」を見せるもの。
+  // 広告主を選んだときは、その広告主の中を誰が作っているのか（アフィリエイター別）で塗る。
+  // アフィリエイターを選んだときは、選んだ本人たちで塗る。
+  $('#cmp-title').textContent = byAdvertiser
+    ? `選んだ広告主の${metric.label} — アフィリエイター別の内訳`
+    : `${dimLabel}別の${metric.label}`;
 
   if (!picked.length) {
     ch.line('c-compare', [], []);
-    renderTable($('#t-compare'), [{ key: 'series', label: dimLabel, type: 'text' }], [],
-      { empty: `左の一覧から${dimLabel}を選んでください` });
     c.rows = [];
-    c.totals = [];
     return;
   }
 
-  const rows = await api.compare(state.filter, c.dim, picked, c.grain, 5);
+  const rows = byAdvertiser
+    // 選んだ広告主に絞って、その中の上位アフィリエイターを系列にする
+    ? await api.compare(state.filter, 'affiliate', null, c.grain, CMP_BANDS, picked)
+    // 選んだアフィリエイターをそのまま系列にする
+    : await api.compare(state.filter, 'affiliate', picked, c.grain, CMP_BANDS);
   c.rows = rows;
 
   // series × bucket の行を、系列ごとの配列に組み替える
-  const buckets = [...new Set(rows.map((r) => r.bucket))].sort();
+  const buckets = [...new Set(rows.map((r) => String(r.bucket)))].sort();
   const bySeries = new Map();
   for (const r of rows) {
     if (!bySeries.has(r.series)) bySeries.set(r.series, new Map());
-    bySeries.get(r.series).set(r.bucket, r);
+    bySeries.get(r.series).set(String(r.bucket), r);
   }
 
-  const labels = buckets.map((b) => (c.grain === 'month' ? String(b).slice(0, 7) : String(b).slice(5)));
-  const series = picked
-    .filter((name) => bySeries.has(name))
-    .map((name, i) => ({
-      label: name,
-      color: ch.color(colorIndexOf(name, picked)),
-      data: buckets.map((b) => {
-        const r = bySeries.get(name).get(b);
-        if (!r) return c.metric === 'cvr' ? null : 0;
-        return r[c.metric] === null ? null : Number(r[c.metric]);
-      }),
-    }));
-
-  ch.line('c-compare', labels, series, { money: CMP_METRIC[c.metric].money });
-
-  // 期間合計
-  const totals = picked.map((name) => {
-    const map = bySeries.get(name);
-    const all = map ? Array.from(map.values()) : [];
-    const sum = (k) => all.reduce((a, r) => a + Number(r[k] || 0), 0);
-    const conversions = sum('conversions');
-    const clicks = sum('clicks');
-    return {
-      series: name,
-      clicks,
-      conversions,
-      cvr: clicks ? (conversions * 100) / clicks : null,
-      sales: sum('sales'),
-      reward: sum('reward'),
-      days: all.filter((r) => Number(r.conversions || 0) > 0 || Number(r.clicks || 0) > 0).length,
-    };
+  // 期間合計の大きい順に積む（下が大きい方）
+  const order = [...bySeries.keys()].sort((a, b) => {
+    const sum = (k) => [...bySeries.get(k).values()]
+      .reduce((acc, r) => acc + Number(r[c.metric] || 0), 0);
+    return sum(b) - sum(a);
   });
-  c.totals = totals;
+  c.order = order;
 
-  renderTable($('#t-compare'), [
-    { key: 'series', label: dimLabel, type: 'text' },
-    { key: 'clicks', label: 'クリック', type: 'num' },
-    { key: 'conversions', label: '成果', type: 'num' },
-    { key: 'cvr', label: 'CVR', type: 'pct' },
-    { key: 'sales', label: '売上', type: 'yen' },
-    { key: 'reward', label: '報酬額', type: 'yen' },
-    { key: 'days', label: '稼働日数', type: 'num', title: '成果かクリックがあった期間の数' },
-  ], totals, { sortKey: 'sales', sortDir: 'desc' });
-}
+  const labels = buckets.map((b) => (c.grain === 'month' ? b.slice(0, 7) : b.slice(5)));
+  const series = order.map((name, i) => ({
+    label: name,
+    color: ch.color(i),
+    data: buckets.map((b) => {
+      const r = bySeries.get(name).get(b);
+      if (!r) return c.metric === 'cvr' ? null : 0;
+      return r[c.metric] === null ? null : Number(r[c.metric]);
+    }),
+  }));
 
-// 線の色は「選んだ順」で決める。並べ替えても同じ人が同じ色でいられるように。
-function colorIndexOf(name, picked) {
-  const i = picked.indexOf(name);
-  return i < 0 ? 0 : i;
+  // CVR は足し算にならないので積み上げない（線のまま重ねる）
+  if (c.metric === 'cvr') {
+    ch.line('c-compare', labels, series, {});
+  } else {
+    ch.area('c-compare', labels, series, { money: metric.money });
+  }
 }
 
 function renderCompareList() {
@@ -843,6 +818,8 @@ function renderCompareList() {
   const box = $('#cmp-list');
   const current = c.picked[c.dim] ?? [];
   const picked = new Set(current);
+  // 広告主を選ぶモードでは、色はアフィリエイター側に付くので見本を出さない
+  const showSwatch = c.dim === 'affiliate';
 
   const list = c.candidates.filter((r) => !q || String(r.label).toLowerCase().includes(q));
   box.replaceChildren();
@@ -861,157 +838,17 @@ function renderCompareList() {
       c.picked[c.dim] = c.candidates.map((x) => x.label).filter((l) => cur.has(l));
       render();
     });
-    const idx = current.indexOf(r.label);
-    const swatch = el('span', { class: 'swatch' });
-    swatch.style.background = idx >= 0 ? ch.color(idx) : 'var(--line-strong)';
-    box.append(el('label', {}, cb, swatch, r.label,
-      el('span', { class: 'cmp-sub', text: '¥' + compact(r.sales) })));
+
+    const kids = [cb];
+    if (showSwatch) {
+      const idx = (c.order || []).indexOf(r.label);
+      const sw = el('span', { class: 'swatch' });
+      sw.style.background = idx >= 0 ? ch.color(idx) : 'var(--line-strong)';
+      kids.push(sw);
+    }
+    kids.push(r.label, el('span', { class: 'cmp-sub', text: '¥' + compact(r.sales) }));
+    box.append(el('label', {}, ...kids));
   }
-}
-
-// ---- アフィリエイター --------------------------------------------------
-
-async function renderAffiliates() {
-  state.affiliates = await api.affiliates(state.filter, 500);
-
-  const bySales = state.affiliates.slice().sort((a, b) => b.sales - a.sales).slice(0, 15);
-  ch.bar('c-aff-sales', bySales.map((r) => r.affiliate_id), [
-    { label: '売上', data: bySales.map((r) => r.sales), color: ch.color(2) },
-  ], { horizontal: true, money: true });
-
-  renderAffiliateTable();
-  if (state.selectedAffiliate) await renderAffiliateDetail(state.selectedAffiliate);
-}
-
-function renderAffiliateTable() {
-  const q = ($('#aff-search').value || '').toLowerCase();
-  const rows = q
-    ? state.affiliates.filter((r) => String(r.affiliate_id || '').toLowerCase().includes(q))
-    : state.affiliates;
-
-  renderTable($('#t-aff'), [
-    { key: 'affiliate_id', label: 'アフィリエイターID', type: 'text' },
-    { key: 'clicks', label: 'クリック', type: 'num' },
-    { key: 'conversions', label: '成果', type: 'num' },
-    { key: 'cvr', label: 'CVR', type: 'pct' },
-    { key: 'sales', label: '売上', type: 'yen' },
-    { key: 'reward', label: '報酬額', type: 'yen' },
-    { key: 'aov', label: '平均単価', type: 'yen' },
-  ], rows, {
-    sortKey: 'sales',
-    sortDir: 'desc',
-    rowKey: 'affiliate_id',
-    selectedKey: state.selectedAffiliate,
-    empty: '該当するアフィリエイターがいません',
-    onRowClick: (row) => {
-      state.selectedAffiliate = row.affiliate_id;
-      renderAffiliateTable();
-      renderAffiliateDetail(row.affiliate_id);
-    },
-  });
-}
-
-async function renderAffiliateDetail(affiliateId) {
-  busy(true);
-  try {
-    const d = await api.affiliateDetail(affiliateId, state.filter);
-    $('#aff-detail').hidden = false;
-    $('#aff-detail-title').textContent = `${affiliateId} の内訳`;
-
-    renderKpis('#aff-detail-kpis', [
-      { k: 'クリック', v: num(d.totals.clicks) },
-      { k: '成果', v: num(d.totals.conversions) },
-      { k: 'CVR', v: d.totals.cvr === null ? '—' : pct(d.totals.cvr) },
-      { k: '売上', v: yen(d.totals.sales) },
-      { k: '報酬額', v: yen(d.totals.reward) },
-    ]);
-
-    const refs = (d.referrers || []).slice(0, 10);
-    ch.bar('c-affd-ref', refs.map((r) => r.label), [
-      { label: 'クリック', data: refs.map((r) => r.clicks), color: ch.color(1) },
-      { label: '成果', data: refs.map((r) => r.conversions), color: ch.color(0) },
-    ], { horizontal: true });
-
-    const daily = (d.daily || []).slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
-    ch.line('c-affd-daily', daily.map((r) => String(r.d).slice(5)), [
-      { label: 'クリック', data: daily.map((r) => r.ck), color: ch.color(1) },
-      { label: '成果', data: daily.map((r) => r.cv), color: ch.color(0), fill: true },
-    ]);
-
-    renderTable($('#t-affd-products'), [
-      { key: 'label', label: '商品名', type: 'text' },
-      { key: 'conversions', label: '成果', type: 'num' },
-      { key: 'sales', label: '売上', type: 'yen' },
-      { key: 'reward', label: '報酬額', type: 'yen' },
-    ], d.products || [], { sortKey: 'conversions', sortDir: 'desc' });
-
-  } finally {
-    busy(false);
-  }
-}
-
-// ---- 商品・広告 --------------------------------------------------------
-
-const DIM_LABEL = {
-  product: '商品', ad: '広告', campaign: 'キャンペーン',
-  advertiser: '広告主', ad_type: '広告タイプ',
-};
-
-async function renderProducts() {
-  const rows = await api.dimension(state.filter, state.dim, 200);
-  state.dimRows = rows;
-
-  const label = DIM_LABEL[state.dim] || state.dim;
-  $('#dim-chart-title').textContent = `${label}別 集計`;
-  $('#dim-table-title').textContent = `${label}別 明細`;
-
-  const top = rows.slice(0, 15);
-  const useClicks = state.dim === 'ad_type';
-  ch.bar('c-dim-bar', top.map((r) => r.label), useClicks
-    ? [{ label: 'クリック数', data: top.map((r) => r.clicks), color: ch.color(1) }]
-    : [
-      { label: '成果件数', data: top.map((r) => r.conversions) },
-      { label: '売上', data: top.map((r) => r.sales), axis: 'y1', color: ch.color(2) },
-    ],
-  { horizontal: useClicks, y1Title: useClicks ? null : '売上' });
-
-  renderTable($('#t-dim'), [
-    { key: 'label', label: label, type: 'text' },
-    { key: 'clicks', label: 'クリック', type: 'num' },
-    { key: 'conversions', label: '成果', type: 'num' },
-    { key: 'cvr', label: 'CVR', type: 'pct' },
-    { key: 'qty', label: '数量', type: 'num' },
-    { key: 'sales', label: '売上', type: 'yen' },
-    { key: 'reward', label: '報酬額', type: 'yen' },
-  ], rows.map(withCvr), { sortKey: useClicks ? 'clicks' : 'conversions', sortDir: 'desc' });
-}
-
-function withCvr(r) {
-  const clicks = Number(r.clicks || 0);
-  return { ...r, cvr: clicks ? (Number(r.conversions) * 100) / clicks : null };
-}
-
-// ---- 流入元 ------------------------------------------------------------
-
-async function renderSources() {
-  const rows = (await api.dimension(state.filter, 'referrer', 200)).map(withCvr);
-  state.srcRows = rows;
-
-  // クリックと成果を1枚にまとめて、流入元ごとの効率を並べて見られるようにする
-  const byClicks = rows.slice().sort((a, b) => b.clicks - a.clicks).slice(0, 15);
-  ch.bar('c-src-clicks', byClicks.map((r) => r.label), [
-    { label: 'クリック', data: byClicks.map((r) => r.clicks), color: ch.color(1) },
-    { label: '成果', data: byClicks.map((r) => r.conversions) },
-  ], { horizontal: true });
-
-  renderTable($('#t-src'), [
-    { key: 'label', label: 'リファラ（ホスト）', type: 'text' },
-    { key: 'clicks', label: 'クリック', type: 'num' },
-    { key: 'conversions', label: '成果', type: 'num' },
-    { key: 'cvr', label: 'CVR', type: 'pct' },
-    { key: 'sales', label: '売上', type: 'yen' },
-    { key: 'reward', label: '報酬額', type: 'yen' },
-  ], rows, { sortKey: 'clicks', sortDir: 'desc' });
 }
 
 // ---- 成果明細 ----------------------------------------------------------
@@ -1063,25 +900,12 @@ function exportCsv(kind) {
     downloadCsv(`日別売上_${stamp}.csv`,
       ['日付', '売上', 'アフィリエイター報酬額', `想定マネートラック報酬(${mtRate()}%)`, '成果件数'],
       (state.summaryRows || []).map((r) => [r.bucket, r.sales, r.reward, r.mt, r.conversions]));
-  } else if (kind === 'affiliates') {
-    downloadCsv(`アフィリエイター別_${stamp}.csv`,
-      ['アフィリエイターID', 'クリック', '成果', 'CVR(%)', '売上', '報酬額', '平均単価'],
-      state.affiliates.map((r) => [r.affiliate_id, r.clicks, r.conversions, r.cvr, r.sales, r.reward, r.aov]));
-  } else if (kind === 'dimension') {
-    const label = DIM_LABEL[state.dim] || state.dim;
-    downloadCsv(`${label}別_${stamp}.csv`,
-      [label, 'クリック', '成果', 'CVR(%)', '数量', '売上', '報酬額'],
-      state.dimRows.map(withCvr).map((r) => [r.label, r.clicks, r.conversions, r.cvr, r.qty, r.sales, r.reward]));
   } else if (kind === 'compare') {
-    const dimLabel = state.compare.dim === 'advertiser' ? '広告主' : 'アフィリエイター';
-    downloadCsv(`比較_${dimLabel}_${stamp}.csv`,
-      [dimLabel, 'クリック', '成果', 'CVR(%)', '売上', '報酬額', '稼働日数'],
-      (state.compare.totals || []).map((r) =>
-        [r.series, r.clicks, r.conversions, r.cvr, r.sales, r.reward, r.days]));
-  } else if (kind === 'sources') {
-    downloadCsv(`流入元別_${stamp}.csv`,
-      ['リファラ', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],
-      state.srcRows.map((r) => [r.label, r.clicks, r.conversions, r.cvr, r.sales, r.reward]));
+    // グラフに出ている内訳をそのまま（系列 × 期間）出す
+    downloadCsv(`比較_${stamp}.csv`,
+      ['アフィリエイター', '期間', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],
+      (state.compare.rows || []).map((r) =>
+        [r.series, r.bucket, r.clicks, r.conversions, r.cvr, r.sales, r.reward]));
   } else if (kind === 'conversions') {
     downloadCsv(`成果明細_${stamp}.csv`,
       ['発生日時', 'ステータス', '広告主', 'アフィリエイター', '商品名', '広告名', 'キャンペーン',

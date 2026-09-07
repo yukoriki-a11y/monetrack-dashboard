@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080159';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080225';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -102,7 +102,9 @@ export const api = {
       p_statuses: f.statuses?.length ? f.statuses : null,
       p_advertisers: f.advertisers?.length ? f.advertisers : null,
     }),
-  compare: (f, dim, keys, grain = 'day', limit = 5) =>
+  // advertisers を渡すとフィルタの広告主より優先する
+  // （「この広告主の中を誰が作っているか」を出すのに使う）
+  compare: (f, dim, keys, grain = 'day', limit = 5, advertisers = null) =>
     rpc('dash_compare', {
       p_from: f.from, p_to: f.to,
       p_statuses: f.statuses?.length ? f.statuses : null,
@@ -110,7 +112,9 @@ export const api = {
       p_keys: keys?.length ? keys : null,
       p_grain: grain,
       p_limit: limit,
-      p_advertisers: f.advertisers?.length ? f.advertisers : null,
+      p_advertisers: advertisers?.length
+        ? advertisers
+        : (f.advertisers?.length ? f.advertisers : null),
     }),
   conversions: (f, search, limit, offset) =>
     rpc('dash_conversions', { ...base(f), p_search: search || null, p_limit: limit, p_offset: offset }),

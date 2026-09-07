@@ -191,7 +191,11 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
   font-size: 13px;
   letter-spacing: .01em;
   color: var(--ink);
+  white-space: nowrap;
 }
+/* タブ名が長くても1行に収め、入らなければ省略する（折り返すとナビが崩れる） */
+.brand-text { overflow: hidden; text-overflow: ellipsis; }
+.tab span { overflow: hidden; text-overflow: ellipsis; }
 /* ロゴは白背景の正方形JPGなので、円形に切り抜いて角の白を隠す
    （暗いテーマだと白い四角が浮いてしまうため） */
 .logo {
@@ -292,14 +296,20 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
 }
 
 /* ---------- フィルタ（1行に収める） ---------- */
+/* 必ず1行に収める。入りきらないときは折り返さず横スクロールさせる。
+   （折り返すと表示領域の高さが変わってしまうため） */
 .filterbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 9px 14px;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding: 8px 14px;
   background: var(--nav);
 }
+.filterbar > * { flex: none; }
 /* どのページの条件なのかを左端に出す（ページごとに別々に持っているため） */
 .fb-scope {
   font-size: 11px;
@@ -307,10 +317,12 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
   color: var(--ink-2);
   white-space: nowrap;
   padding-right: 4px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.fb-group { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.fb-group { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; }
 .filterbar .dash { color: var(--ink-3); }
-.fb-range { margin-left: auto; text-align: right; }
 
 label.inline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 label.inline.check { cursor: pointer; }
@@ -334,11 +346,11 @@ label.inline.check { cursor: pointer; }
 .dropdown > summary::-webkit-details-marker { display: none; }
 .dropdown > summary::after { content: " ▾"; color: var(--ink-3); }
 .dropdown[open] > summary { background: var(--panel-3); color: var(--ink); }
+/* フィルタ帯を横スクロールさせている＝はみ出しが切られるので、
+   メニューは position: fixed にして JS 側で位置を決める。 */
 .dropdown .menu {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
+  z-index: 60;
   min-width: 260px;
   max-height: 360px;
   overflow: auto;
@@ -352,7 +364,6 @@ label.inline.check { cursor: pointer; }
 }
 .dropdown .menu.narrow { min-width: 200px; }
 /* 右端に近いドロップダウンは左に開く */
-.dropdown.to-left .menu { left: auto; right: 0; }
 
 /* 一括操作の並び。スクロールしても上に残す */
 .menu-tools {
@@ -486,10 +497,10 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 
 /* 比較: 左に選択リスト、右に重ねた線グラフ、下に合計表 */
 .v-compare {
-  grid-template-columns: minmax(220px, .8fr) repeat(2, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-columns: minmax(230px, .5fr) minmax(0, 1.5fr);
+  grid-template-rows: minmax(0, 1fr);
 }
-.cmp-pick { grid-row: span 2; grid-template-rows: auto auto minmax(0, 1fr); }
+.cmp-pick { grid-template-rows: auto auto minmax(0, 1fr); }
 .cmp-list {
   overflow: auto;
   min-height: 0;
@@ -513,27 +524,6 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 .cmp-list label:hover { background: var(--panel); }
 .cmp-list .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .cmp-list .cmp-sub { margin-left: auto; color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
-
-/* アフィリエイター: 左に一覧、右に内訳
-   概要パネルと内訳パネルは常にどちらか一方だけを表示するので、行は 1 本のまま。
-   （2行にすると display:none 側が抜けた分だけ auto 行に押し込まれて潰れる） */
-.v-aff { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: minmax(0, 1fr); }
-.aff-right { display: grid; gap: var(--gap); min-height: 0; grid-template-rows: minmax(0, 1fr); }
-.aff-right:has(#aff-detail:not([hidden])) #aff-overview { display: none; }
-#aff-detail .grid-2.fill { grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr); }
-#aff-detail .sub.span2 { grid-column: span 2; }
-
-/* 商品・広告: グラフと明細の2枚 */
-.v-products {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr);
-}
-
-/* 流入元: グラフと表の2枚 */
-.v-sources {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1.15fr);
-}
 
 /* 成果明細 / 取込 */
 .v-detail { grid-template-rows: minmax(0, 1fr); }
@@ -564,8 +554,6 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 
 /* 中身が2つ以外のカードは、どの行を伸ばすか個別に決める
    （:has(:nth-child) の当て推量だと伸ばす行を間違えるので明示する） */
-.v-aff > .card               { grid-template-rows: auto auto minmax(0, 1fr); }  /* 見出し / 注記 / 表 */
-#aff-detail                  { grid-template-rows: auto auto minmax(0, 1fr); }  /* 見出し / KPI / 内訳 */
 .v-detail .card              { grid-template-rows: auto minmax(0, 1fr) auto; }  /* 見出し / 表 / ページ送り */
 .v-import .card:first-child  { grid-template-rows: auto auto auto minmax(0, 1fr); } /* 見出し / D&D / 設定 / ログ */
 
@@ -724,7 +712,6 @@ td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-sp
 
 /* 3列が入らない幅: 2列に */
 @media (max-width: 1080px) {
-  .v-products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span3 { grid-column: span 2; }
 }
 
@@ -746,16 +733,14 @@ td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-sp
   .tab span { display: inline; }
   .tab { padding: 8px 10px; }
   #main { overflow: visible; }
-  .view, .grid-2, .aff-right {
+  .view, .grid-2 {
     height: auto;
     grid-template-columns: minmax(0, 1fr) !important;
     grid-template-rows: none !important;
     grid-auto-rows: auto;
   }
-  .span2, .span3, #aff-detail .sub.span2 { grid-column: span 1; }
+  .span2, .span3 { grid-column: span 1; }
   .card { grid-template-rows: none; }
   .chart-wrap { height: 240px; }
   .table-wrap { max-height: 420px; }
-  .aff-right:has(#aff-detail:not([hidden])) #aff-overview { display: grid; }
-  .fb-range { margin-left: 0; width: 100%; text-align: left; }
 }

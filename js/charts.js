@@ -1,6 +1,6 @@
 // Chart.js の薄いラッパ。同じ canvas に描き直すときは古いインスタンスを破棄する。
 
-import { compact } from './util.js?v=202609080159';
+import { compact, num, yen } from './util.js?v=202609080225';
 
 const registry = new Map();
 
@@ -124,6 +124,72 @@ export function line(canvasId, labels, series, opts = {}) {
       })),
     },
     options: { scales: axes(opts) },
+  });
+}
+
+// ---- 積み上げ面 --------------------------------------------------------
+// 「合計のうち、どれがどれだけ稼いだか」を色の面積で見せる。
+// 高さの合計が全体の値になり、各帯がその内訳。
+// 割合は足し算にならないので、CVR のような比率には使わない。
+export function area(canvasId, labels, series, opts = {}) {
+  const t = themeColors();
+  const money = Boolean(opts.money);
+  const fmt = (v) => (money ? yen(v) : num(v));
+
+  // 各時点の合計。ツールチップで割合を出すのに使う。
+  const totals = labels.map((_, i) => series.reduce((a, s) => a + Number(s.data[i] || 0), 0));
+
+  return draw(canvasId, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: series.map((s, i) => ({
+        label: s.label,
+        data: s.data,
+        borderColor: s.color || color(i),
+        backgroundColor: (s.color || color(i)) + 'd0',
+        borderWidth: 1,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        tension: 0.2,
+        fill: true,
+      })),
+    },
+    options: {
+      scales: {
+        x: {
+          stacked: true,
+          grid: { display: false },
+          ticks: { color: t.ink2, font: { size: 11 }, maxRotation: 0, autoSkip: true },
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          grid: { color: t.grid },
+          border: { display: false },
+          ticks: {
+            color: t.ink2,
+            font: { size: 11 },
+            callback: (v) => (money ? '¥' + compact(v) : compact(v)),
+          },
+        },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const v = Number(ctx.parsed.y || 0);
+              const sum = totals[ctx.dataIndex] || 0;
+              const share = sum ? ((v / sum) * 100).toFixed(1) : '0.0';
+              return ` ${ctx.dataset.label}: ${fmt(v)}（${share}%）`;
+            },
+            footer(items) {
+              return `合計 ${fmt(totals[items[0].dataIndex] || 0)}`;
+            },
+          },
+        },
+      },
+    },
   });
 }
 

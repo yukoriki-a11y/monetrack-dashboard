@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609080159">
+<link rel="stylesheet" href="css/app.css?v=202609080225">
 </head>
 <body>
 
@@ -72,19 +72,7 @@
     </button>
     <button class="tab" data-view="compare">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l5-9 4 5 4-8 5 12"/><path d="M3 21h18"/></svg>
-      <span>比較</span>
-    </button>
-    <button class="tab" data-view="affiliates">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.2 2.7-5 6-5s6 1.8 6 5"/><path d="M16 6.5a3 3 0 010 5.6M18 20c0-2.4-1-4-2.5-4.6"/></svg>
-      <span>アフィリエイター</span>
-    </button>
-    <button class="tab" data-view="products">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.2v9.6L12 21l-8-4.2V7.2z"/><path d="M4 7.2l8 4.2 8-4.2M12 21v-9.6"/></svg>
-      <span>商品・広告</span>
-    </button>
-    <button class="tab" data-view="sources">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.5 2.6 15 0 18M12 3c-2.6 2.5-2.6 15 0 18"/></svg>
-      <span>流入元</span>
+      <span>広告主/アフィリエイター</span>
     </button>
     <button class="tab" data-view="detail">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
@@ -137,7 +125,6 @@
         <div class="menu" id="f-affiliate"></div>
       </details>
 
-      <div class="muted small fb-range" id="data-range"></div>
     </div>
 
     <main id="main">
@@ -184,10 +171,11 @@
           <div class="cmp-list" id="cmp-list"></div>
         </div>
 
-        <div class="card span2">
+        <div class="card">
           <div class="card-head">
             <h2 id="cmp-title">動きの比較</h2>
             <div class="row wrap">
+              <button class="btn sm" data-export="compare">CSV</button>
               <div class="seg" id="cmp-metric">
                 <button class="chip is-active" data-cmpmetric="conversions">成果件数</button>
                 <button class="chip" data-cmpmetric="sales">売上</button>
@@ -203,97 +191,6 @@
             </div>
           </div>
           <div class="chart-wrap"><canvas id="c-compare"></canvas></div>
-        </div>
-
-        <div class="card span2">
-          <div class="card-head">
-            <h2>期間合計</h2>
-            <button class="btn sm" data-export="compare">CSV</button>
-          </div>
-          <div class="table-wrap"><table id="t-compare"></table></div>
-        </div>
-      </section>
-
-      <!-- アフィリエイター（左=一覧 / 右=内訳） -->
-      <section class="view v-aff" data-view="affiliates" hidden>
-        <div class="card">
-          <div class="card-head">
-            <h2>ランキング</h2>
-            <div class="row">
-              <input id="aff-search" type="search" placeholder="IDで絞り込み">
-              <button class="btn sm" data-export="affiliates">CSV</button>
-            </div>
-          </div>
-          <p class="muted small hint">行をクリックすると右に内訳が出ます</p>
-          <div class="table-wrap"><table id="t-aff"></table></div>
-        </div>
-
-        <div class="aff-right">
-          <div class="card" id="aff-overview">
-            <h2>売上 TOP15</h2>
-            <div class="chart-wrap"><canvas id="c-aff-sales"></canvas></div>
-          </div>
-
-          <div class="card" id="aff-detail" hidden>
-            <div class="card-head">
-              <h2 id="aff-detail-title"></h2>
-              <button class="btn link" id="aff-detail-close">閉じる</button>
-            </div>
-            <div class="kpis small" id="aff-detail-kpis"></div>
-            <div class="grid-2 fill">
-              <div class="sub">
-                <h3>流入元（リファラ）</h3>
-                <div class="chart-wrap"><canvas id="c-affd-ref"></canvas></div>
-              </div>
-              <div class="sub">
-                <h3>日別</h3>
-                <div class="chart-wrap"><canvas id="c-affd-daily"></canvas></div>
-              </div>
-              <div class="sub span2">
-                <h3>商品別</h3>
-                <div class="table-wrap"><table id="t-affd-products"></table></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 商品・広告 -->
-      <section class="view v-products" data-view="products" hidden>
-        <div class="card span3">
-          <div class="card-head">
-            <h2 id="dim-chart-title">軸別 集計</h2>
-            <div class="seg" id="dim">
-              <button class="chip is-active" data-dim="product">商品</button>
-              <button class="chip" data-dim="ad">広告</button>
-              <button class="chip" data-dim="campaign">キャンペーン</button>
-              <button class="chip" data-dim="advertiser">広告主</button>
-              <button class="chip" data-dim="ad_type">広告タイプ</button>
-            </div>
-          </div>
-          <div class="chart-wrap"><canvas id="c-dim-bar"></canvas></div>
-        </div>
-        <div class="card span3">
-          <div class="card-head">
-            <h2 id="dim-table-title">明細</h2>
-            <button class="btn sm" data-export="dimension">CSV</button>
-          </div>
-          <div class="table-wrap"><table id="t-dim"></table></div>
-        </div>
-      </section>
-
-      <!-- 流入元 -->
-      <section class="view v-sources" data-view="sources" hidden>
-        <div class="card span2">
-          <h2>リファラ別 クリック / 成果</h2>
-          <div class="chart-wrap"><canvas id="c-src-clicks"></canvas></div>
-        </div>
-        <div class="card span2">
-          <div class="card-head">
-            <h2>リファラ別 CVR</h2>
-            <button class="btn sm" data-export="sources">CSV</button>
-          </div>
-          <div class="table-wrap"><table id="t-src"></table></div>
         </div>
       </section>
 
@@ -367,6 +264,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609080159"></script>
+<script type="module" src="js/app.js?v=202609080225"></script>
 </body>
 </html>

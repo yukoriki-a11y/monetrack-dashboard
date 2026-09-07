@@ -682,10 +682,34 @@ $$;
 
 -- ---------------------------------------------------------------------
 -- 7. 権限
+-- ---------------------------------------------------------------------
+
+-- 7-1. テーブルへの権限
+--   プロジェクト作成時に「Automatically expose new tables」をオフにしているので、
+--   ここで明示的に付ける。Postgres では GRANT と RLS ポリシーの両方が必要で、
+--   ポリシーを書いただけでは permission denied になる。
+--   RPC は security invoker（呼び出したユーザーの権限で動く）なので、
+--   関数の EXECUTE 権だけでなくテーブルの権限も要る。
+grant usage on schema public to authenticated;
+
+grant select, insert, update, delete on public.conversions to authenticated;
+grant select, insert, update, delete on public.clicks      to authenticated;
+grant select, insert, update, delete on public.imports     to authenticated;
+
+-- clicks.id / imports.id は bigserial なので連番の使用権も要る
+grant usage, select on sequence public.clicks_id_seq  to authenticated;
+grant usage, select on sequence public.imports_id_seq to authenticated;
+
+-- 未ログイン（anon）には一切渡さない
+revoke all on public.conversions from anon;
+revoke all on public.clicks      from anon;
+revoke all on public.imports     from anon;
+revoke all on sequence public.clicks_id_seq  from anon;
+revoke all on sequence public.imports_id_seq from anon;
+
+-- 7-2. 関数への権限
 --   関数は既定で PUBLIC に実行権が付くので、いったん剥がして
 --   ログイン済みユーザーにだけ付け直す。
---   （データ自体は RLS で守られているが、二重に絞っておく）
--- ---------------------------------------------------------------------
 do $$
 declare
   fn record;

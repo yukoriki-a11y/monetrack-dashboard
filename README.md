@@ -16,9 +16,16 @@ KPI・推移・アフィリエイター別・商品別・流入元・CVR を見�
 
 1. https://supabase.com にログイン（GitHub アカウントでログインできる）
 2. **New project** → 名前は `affiliate-dashboard` など / Region は **Northeast Asia (Tokyo)** / プランは Free
+   - Security の **Enable Data API** は**オン**（supabase-js が使うので必須）
+   - **Automatically expose new tables** は**オフ**を推奨。オフにすると未ログイン（`anon`）に
+     テーブル権限が自動で付かなくなる。`schema.sql` 側で `authenticated` にだけ明示的に
+     GRANT しているので、オフでも動く
 3. できたら **SQL Editor** を開き、このリポジトリの [`sql/schema.sql`](sql/schema.sql) を**全文コピペして Run**
-   - テーブル・インデックス・RLS・集計用の関数がまとめて作られる
+   - テーブル・インデックス・RLS・集計用の関数・権限がまとめて作られる
    - 何度実行しても大丈夫（冪等）
+   - 「This query includes destructive operations」という警告が出るが、
+     `drop policy if exists` と `revoke ... from anon` を含むため。
+     新規の空DBなら実際に消えるものは無い
 
 ### 2. ログイン用のユーザーを作る
 

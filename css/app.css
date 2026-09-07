@@ -148,6 +148,16 @@ input:focus-visible, button:focus-visible, summary:focus-visible {
   gap: 13px;
 }
 .gate-card label { display: grid; gap: 5px; font-size: 12px; color: var(--ink-2); }
+.gate-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 2px;
+}
 
 /* =====================================================================
    本体シェル： [ 縦ナビ | フィルタ+表示領域 ]
@@ -180,7 +190,17 @@ input:focus-visible, button:focus-visible, summary:focus-visible {
   letter-spacing: .01em;
   color: var(--ink);
 }
-.brand svg { width: 18px; height: 18px; flex: none; stroke: var(--accent); fill: none; stroke-width: 2; stroke-linecap: round; }
+/* ロゴは白背景の正方形JPGなので、円形に切り抜いて角の白を隠す
+   （暗いテーマだと白い四角が浮いてしまうため） */
+.logo {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+.logo.lg { width: 38px; height: 38px; }
 
 .tab {
   appearance: none;

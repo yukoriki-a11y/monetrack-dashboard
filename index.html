@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
+<link rel="icon" href="assets/monetrack-logo.jpg">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -11,6 +12,10 @@
 <!-- ============ 初期設定（Supabase の接続先を入れる画面） ============ -->
 <section id="setup" class="gate" hidden>
   <div class="gate-card">
+    <div class="gate-brand">
+      <img class="logo lg" src="assets/monetrack-logo.jpg" alt="マネートラック">
+      <span>マネートラック 成果分析</span>
+    </div>
     <h1>初期設定</h1>
     <p class="muted">Supabase プロジェクトの接続先を入力してください。このブラウザにだけ保存されます。</p>
     <label>Project URL
@@ -31,6 +36,10 @@
 <!-- ============ ログイン ============ -->
 <section id="login" class="gate" hidden>
   <div class="gate-card">
+    <div class="gate-brand">
+      <img class="logo lg" src="assets/monetrack-logo.jpg" alt="マネートラック">
+      <span>マネートラック 成果分析</span>
+    </div>
     <h1>ログイン</h1>
     <label>メールアドレス
       <input id="login-email" type="email" autocomplete="username">
@@ -50,7 +59,7 @@
   <!-- 左の縦ナビ -->
   <nav class="sidebar" id="tabs">
     <div class="brand">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V10M9 20V4M15 20v-7M21 20V7"/></svg>
+      <img class="logo" src="assets/monetrack-logo.jpg" alt="マネートラック">
       <span class="brand-text">アフィリエイト分析</span>
     </div>
 

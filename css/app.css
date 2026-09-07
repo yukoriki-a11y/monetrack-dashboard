@@ -310,17 +310,6 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
   background: var(--nav);
 }
 .filterbar > * { flex: none; }
-/* どのページの条件なのかを左端に出す（ページごとに別々に持っているため） */
-.fb-scope {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ink-2);
-  white-space: nowrap;
-  padding-right: 4px;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .fb-group { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; }
 .filterbar .dash { color: var(--ink-3); }
 

@@ -1,11 +1,11 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080225';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080225';
-import * as ch from './charts.js?v=202609080225';
-import { renderTable, resetSort } from './table.js?v=202609080225';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080225';
-import { dayKind, holidayName } from './holiday.js?v=202609080225';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080229';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080229';
+import * as ch from './charts.js?v=202609080229';
+import { renderTable, resetSort } from './table.js?v=202609080229';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080229';
+import { dayKind, holidayName } from './holiday.js?v=202609080229';
 
 // ---- 状態 --------------------------------------------------------------
 
@@ -179,7 +179,6 @@ async function startApp(user) {
   const initial = state.meta?.cv_date_min || state.meta?.ck_date_min ? 'all' : '7';
   $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === initial));
   applyPreset(initial);
-  $('#filter-scope').textContent = `${VIEW_LABEL.summary}の条件`;
   await render();
 }
 
@@ -233,20 +232,10 @@ function syncFilterUI() {
   $('#f-to').value = f.to || '';
   $('#f-month').value = f.month || '';
   $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === f.preset));
-  $('#filter-scope').textContent = `${VIEW_LABEL[state.view] || ''}の条件`;
   buildStatusBoxes();
   buildPicker('advertiser', state.meta?.advertisers || []);
   buildPicker('affiliate', state.meta?.affiliates || []);
 }
-
-const VIEW_LABEL = {
-  summary: 'サマリー',
-  compare: '広告主/アフィリエイター',
-  affiliates: 'アフィリエイター',
-  products: '商品・広告',
-  sources: '流入元',
-  detail: '成果明細',
-};
 
 // ---- 左ナビの開閉 ------------------------------------------------------
 // 畳んだ状態はこのブラウザに覚えさせる。

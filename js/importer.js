@@ -99,6 +99,7 @@ async function importOne(file) {
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
+  let stayed = 0;
 
   for (const [i, part] of parts.entries()) {
     line.className = '';
@@ -110,6 +111,7 @@ async function importOne(file) {
     inserted += res?.inserted ?? 0;
     updated  += res?.updated ?? 0;
     skipped  += res?.skipped ?? 0;
+    stayed   += res?.stayed ?? 0;
   }
 
   await api.importRecord(
@@ -119,8 +121,13 @@ async function importOne(file) {
 
   line.className = 'ok';
   const bits = [`新規 ${num(inserted)}件`];
-  if (kind === 'conversions') bits.push(`更新 ${num(updated)}件`);
-  else bits.push(`重複スキップ ${num(skipped)}件`);
+  if (kind === 'conversions') {
+    // 「更新」はステータスや金額が変わった行。「据え置き」は既存とまったく
+    // 同じで書き込みをしなかった行（承認を保留に巻き戻さないための判定も含む）。
+    bits.push(`更新 ${num(updated)}件`, `据え置き ${num(stayed)}件`);
+  } else {
+    bits.push(`重複スキップ ${num(skipped)}件`);
+  }
   if (parsed.dropped) bits.push(`日付が読めず除外 ${num(parsed.dropped)}件`);
   line.textContent = `${file.name}（${label} ${num(parsed.rows.length)}行）: ${bits.join(' / ')}`;
   return true;
@@ -139,7 +146,7 @@ export async function loadImportHistory() {
       { key: 'row_count', label: '行数', type: 'num' },
       { key: 'inserted_count', label: '新規', type: 'num' },
       { key: 'updated_count', label: '更新', type: 'num' },
-      { key: 'skipped_count', label: '重複', type: 'num' },
+      { key: 'skipped_count', label: '据え置き', type: 'num', title: '成果は既存と同じで書き込まなかった行、クリックは重複で弾いた行' },
     ], rows || [], { empty: 'まだ取り込み履歴がありません' });
   } catch (err) {
     renderTable(table, [{ key: 'e', label: 'エラー' }], [], { empty: err.message });

@@ -161,6 +161,8 @@ function wireTabs() {
     if (!btn) return;
     state.view = btn.dataset.view;
     $$('.tab').forEach((t) => t.classList.toggle('is-active', t === btn));
+    // hidden を外してから render する。Chart.js は非表示の器で初期化すると
+    // 0x0 に固定され、あとから resize しても戻らないため順序が重要。
     $$('.view').forEach((v) => { v.hidden = v.dataset.view !== state.view; });
     $('#filterbar').hidden = state.view === 'import';
     render();
@@ -203,7 +205,9 @@ function wireViewControls() {
   $('#aff-detail-close').addEventListener('click', () => {
     state.selectedAffiliate = null;
     $('#aff-detail').hidden = true;
-    renderAffiliateTable();
+    // 内訳を閉じると一覧グラフが再表示される（CSS側で切り替え）。
+    // 隠れている間にキャンバスが潰れているので描き直す。
+    renderAffiliates();
   });
 
   $('#detail-go').addEventListener('click', () => {
@@ -254,16 +258,18 @@ async function loadMeta() {
   }
   if (!statuses.length) box.append(el('span', { class: 'muted small', text: 'データ未取込' }));
 
-  // 広告主
-  const sel = $('#f-advertiser');
+  // 広告主（チェックボックスのドロップダウン。何も選ばなければ「全て」）
+  const box2 = $('#f-advertiser');
   const prevAdv = new Set(state.filter.advertisers);
-  sel.replaceChildren();
-  for (const a of m.advertisers || []) {
-    const o = el('option', { value: a, text: a });
-    o.selected = prevAdv.has(a);
-    sel.append(o);
+  box2.replaceChildren();
+  const advertisers = m.advertisers || [];
+  for (const a of advertisers) {
+    const cb = el('input', { type: 'checkbox', value: a });
+    cb.checked = prevAdv.has(a);
+    cb.addEventListener('change', () => { readFilterInputs(); updateAdvertiserLabel(); render(); });
+    box2.append(el('label', { class: 'inline check' }, cb, a));
   }
-  sel.size = Math.min(Math.max((m.advertisers || []).length, 3), 8);
+  if (!advertisers.length) box2.append(el('span', { class: 'muted small', text: 'データ未取込' }));
 
   const range = [];
   if (m.cv_date_min) range.push(`成果 ${m.cv_date_min}〜${m.cv_date_max}（${num(m.cv_rows)}件）`);
@@ -271,13 +277,21 @@ async function loadMeta() {
   $('#data-range').textContent = range.join(' / ') || 'データがありません。「データ取込」から入れてください。';
 
   readFilterInputs();
+  updateAdvertiserLabel();
 }
 
 function readFilterInputs() {
   state.filter.from = $('#f-from').value || state.filter.from;
   state.filter.to = $('#f-to').value || state.filter.to;
   state.filter.statuses = $$('#f-status input:checked').map((c) => c.value);
-  state.filter.advertisers = Array.from($('#f-advertiser').selectedOptions).map((o) => o.value);
+  state.filter.advertisers = $$('#f-advertiser input:checked').map((c) => c.value);
+}
+
+function updateAdvertiserLabel() {
+  const picked = state.filter.advertisers;
+  $('#f-advertiser-label').textContent = picked.length
+    ? `広告主: ${picked.length === 1 ? picked[0] : picked.length + '件'}`
+    : '広告主: 全て';
 }
 
 function applyPreset(preset) {
@@ -498,7 +512,6 @@ async function renderAffiliateDetail(affiliateId) {
       { key: 'reward', label: '報酬額', type: 'yen' },
     ], d.products || [], { sortKey: 'conversions', sortDir: 'desc' });
 
-    $('#aff-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } finally {
     busy(false);
   }
@@ -519,6 +532,7 @@ async function renderProducts() {
   state.dimRows = rows;
 
   const label = DIM_LABEL[state.dim] || state.dim;
+  $('#dim-chart-title').textContent = `${label}別 集計`;
   $('#dim-table-title').textContent = `${label}別 明細`;
 
   const top = rows.slice(0, 15);

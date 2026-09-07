@@ -46,96 +46,120 @@
 
 <!-- ============ 本体 ============ -->
 <div id="app" hidden>
-  <header class="topbar">
-    <div class="brand">アフィリエイト分析</div>
-    <nav class="tabs" id="tabs">
-      <button class="tab is-active" data-view="summary">サマリー</button>
-      <button class="tab" data-view="trend">推移</button>
-      <button class="tab" data-view="affiliates">アフィリエイター</button>
-      <button class="tab" data-view="products">商品・広告</button>
-      <button class="tab" data-view="sources">流入元</button>
-      <button class="tab" data-view="detail">成果明細</button>
-      <button class="tab" data-view="import">データ取込</button>
-    </nav>
-    <div class="topbar-right">
-      <span id="who" class="muted"></span>
+
+  <!-- 左の縦ナビ -->
+  <nav class="sidebar" id="tabs">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V10M9 20V4M15 20v-7M21 20V7"/></svg>
+      <span class="brand-text">アフィリエイト分析</span>
+    </div>
+
+    <button class="tab is-active" data-view="summary">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>サマリー</span>
+    </button>
+    <button class="tab" data-view="trend">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg>
+      <span>推移</span>
+    </button>
+    <button class="tab" data-view="affiliates">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.2 2.7-5 6-5s6 1.8 6 5"/><path d="M16 6.5a3 3 0 010 5.6M18 20c0-2.4-1-4-2.5-4.6"/></svg>
+      <span>アフィリエイター</span>
+    </button>
+    <button class="tab" data-view="products">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.2v9.6L12 21l-8-4.2V7.2z"/><path d="M4 7.2l8 4.2 8-4.2M12 21v-9.6"/></svg>
+      <span>商品・広告</span>
+    </button>
+    <button class="tab" data-view="sources">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.5 2.6 15 0 18M12 3c-2.6 2.5-2.6 15 0 18"/></svg>
+      <span>流入元</span>
+    </button>
+    <button class="tab" data-view="detail">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span>成果明細</span>
+    </button>
+    <button class="tab" data-view="import">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3h16v-3"/></svg>
+      <span>データ取込</span>
+    </button>
+
+    <div class="sidebar-foot">
+      <span id="who" class="muted small"></span>
       <button id="logout" class="btn link">ログアウト</button>
     </div>
-  </header>
+  </nav>
 
-  <!-- フィルタバー -->
-  <div class="filterbar" id="filterbar">
-    <div class="f">
-      <label>期間</label>
-      <div class="row">
-        <input type="date" id="f-from">
+  <!-- 右側 = フィルタ + 表示領域 -->
+  <div class="content">
+
+    <div class="filterbar" id="filterbar">
+      <div class="fb-group">
+        <input type="date" id="f-from" aria-label="開始日">
         <span class="dash">〜</span>
-        <input type="date" id="f-to">
+        <input type="date" id="f-to" aria-label="終了日">
       </div>
-      <div class="row presets" id="presets">
-        <button class="chip" data-preset="7">直近7日</button>
-        <button class="chip" data-preset="30">直近30日</button>
+
+      <div class="fb-group" id="presets">
+        <button class="chip" data-preset="7">7日</button>
+        <button class="chip" data-preset="30">30日</button>
         <button class="chip" data-preset="thismonth">今月</button>
         <button class="chip" data-preset="lastmonth">先月</button>
         <button class="chip" data-preset="all">全期間</button>
       </div>
-    </div>
-    <div class="f">
-      <label>ステータス</label>
-      <div class="row" id="f-status"></div>
-    </div>
-    <div class="f">
-      <label>広告主 / プログラム</label>
-      <select id="f-advertiser" multiple size="4"></select>
-    </div>
-    <div class="f f-actions">
-      <button id="f-apply" class="btn primary">反映</button>
-      <div class="muted small" id="data-range"></div>
-    </div>
-  </div>
 
-  <main id="main">
-    <!-- サマリー -->
-    <section class="view" data-view="summary">
-      <div class="kpis" id="kpis"></div>
-      <div class="grid2">
-        <div class="card">
-          <h2>日次推移（成果 / クリック）</h2>
-          <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>ステータス内訳</h2>
-          <div class="chart-wrap"><canvas id="c-summary-status"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>デバイス内訳</h2>
-          <div class="chart-wrap"><canvas id="c-summary-device"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>広告主別 成果</h2>
-          <div class="chart-wrap"><canvas id="c-summary-adv"></canvas></div>
-        </div>
-      </div>
-      <div class="card">
-        <h2>アフィリエイター 売上 TOP10</h2>
-        <div class="chart-wrap tall"><canvas id="c-summary-aff"></canvas></div>
-      </div>
-    </section>
+      <div class="fb-group" id="f-status"></div>
 
-    <!-- 推移 -->
-    <section class="view" data-view="trend" hidden>
-      <div class="card">
-        <div class="card-head">
-          <h2>期間推移</h2>
-          <div class="seg" id="grain">
-            <button class="chip is-active" data-grain="day">日</button>
-            <button class="chip" data-grain="week">週</button>
-            <button class="chip" data-grain="month">月</button>
+      <details class="dropdown" id="f-advertiser-dd">
+        <summary id="f-advertiser-label">広告主: 全て</summary>
+        <div class="menu" id="f-advertiser"></div>
+      </details>
+
+      <button id="f-apply" class="btn primary sm">反映</button>
+      <div class="muted small fb-range" id="data-range"></div>
+    </div>
+
+    <main id="main">
+
+      <!-- サマリー -->
+      <section class="view v-summary" data-view="summary">
+        <div class="kpis" id="kpis"></div>
+        <div class="board board-summary">
+          <div class="card span2">
+            <h2>日次推移（成果 / クリック）</h2>
+            <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
+          </div>
+          <div class="card">
+            <h2>ステータス内訳</h2>
+            <div class="chart-wrap"><canvas id="c-summary-status"></canvas></div>
+          </div>
+          <div class="card">
+            <h2>デバイス内訳</h2>
+            <div class="chart-wrap"><canvas id="c-summary-device"></canvas></div>
+          </div>
+          <div class="card">
+            <h2>広告主別 成果</h2>
+            <div class="chart-wrap"><canvas id="c-summary-adv"></canvas></div>
+          </div>
+          <div class="card">
+            <h2>アフィリエイター 売上 TOP10</h2>
+            <div class="chart-wrap"><canvas id="c-summary-aff"></canvas></div>
           </div>
         </div>
-        <div class="chart-wrap tall"><canvas id="c-trend-main"></canvas></div>
-      </div>
-      <div class="grid2">
+      </section>
+
+      <!-- 推移 -->
+      <section class="view v-trend" data-view="trend" hidden>
+        <div class="card span3">
+          <div class="card-head">
+            <h2>期間推移</h2>
+            <div class="seg" id="grain">
+              <button class="chip is-active" data-grain="day">日</button>
+              <button class="chip" data-grain="week">週</button>
+              <button class="chip" data-grain="month">月</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="c-trend-main"></canvas></div>
+        </div>
         <div class="card">
           <h2>売上・報酬</h2>
           <div class="chart-wrap"><canvas id="c-trend-money"></canvas></div>
@@ -144,180 +168,179 @@
           <h2>CVR 推移</h2>
           <div class="chart-wrap"><canvas id="c-trend-cvr"></canvas></div>
         </div>
-      </div>
-      <div class="card">
-        <h2>数値テーブル</h2>
-        <div class="table-wrap"><table id="t-trend"></table></div>
-      </div>
-    </section>
+        <div class="card">
+          <h2>数値</h2>
+          <div class="table-wrap"><table id="t-trend"></table></div>
+        </div>
+      </section>
 
-    <!-- アフィリエイター -->
-    <section class="view" data-view="affiliates" hidden>
-      <div class="grid2">
+      <!-- アフィリエイター（左=一覧 / 右=内訳） -->
+      <section class="view v-aff" data-view="affiliates" hidden>
         <div class="card">
-          <h2>クリック数 TOP15</h2>
-          <div class="chart-wrap"><canvas id="c-aff-clicks"></canvas></div>
-        </div>
-        <div class="card">
-          <h2>売上 TOP15</h2>
-          <div class="chart-wrap"><canvas id="c-aff-sales"></canvas></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-head">
-          <h2>アフィリエイター別ランキング</h2>
-          <div class="row">
-            <input id="aff-search" type="search" placeholder="ID で絞り込み">
-            <button class="btn" data-export="affiliates">CSV出力</button>
+          <div class="card-head">
+            <h2>ランキング</h2>
+            <div class="row">
+              <input id="aff-search" type="search" placeholder="IDで絞り込み">
+              <button class="btn sm" data-export="affiliates">CSV</button>
+            </div>
           </div>
+          <p class="muted small hint">行をクリックすると右に内訳が出ます</p>
+          <div class="table-wrap"><table id="t-aff"></table></div>
         </div>
-        <p class="muted small">行をクリックすると、そのアフィリエイターの流入元・広告・商品の内訳が下に出ます。</p>
-        <div class="table-wrap"><table id="t-aff"></table></div>
-      </div>
-      <div class="card" id="aff-detail" hidden>
-        <div class="card-head">
-          <h2 id="aff-detail-title"></h2>
-          <button class="btn link" id="aff-detail-close">閉じる</button>
-        </div>
-        <div class="kpis small" id="aff-detail-kpis"></div>
-        <div class="grid2">
-          <div class="sub">
-            <h3>流入元（リファラ）</h3>
-            <div class="chart-wrap"><canvas id="c-affd-ref"></canvas></div>
-          </div>
-          <div class="sub">
-            <h3>日別</h3>
-            <div class="chart-wrap"><canvas id="c-affd-daily"></canvas></div>
-          </div>
-        </div>
-        <div class="grid2">
-          <div class="sub">
-            <h3>広告別</h3>
-            <div class="table-wrap short"><table id="t-affd-ads"></table></div>
-          </div>
-          <div class="sub">
-            <h3>商品別</h3>
-            <div class="table-wrap short"><table id="t-affd-products"></table></div>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- 商品・広告 -->
-    <section class="view" data-view="products" hidden>
-      <div class="card">
-        <div class="card-head">
-          <h2>軸を選んで集計</h2>
-          <div class="seg" id="dim">
-            <button class="chip is-active" data-dim="product">商品</button>
-            <button class="chip" data-dim="ad">広告</button>
-            <button class="chip" data-dim="campaign">キャンペーン</button>
-            <button class="chip" data-dim="advertiser">広告主</button>
-            <button class="chip" data-dim="ad_type">広告タイプ</button>
+        <div class="aff-right">
+          <div class="card" id="aff-overview">
+            <div class="grid-2">
+              <div class="sub">
+                <h2>クリック数 TOP15</h2>
+                <div class="chart-wrap"><canvas id="c-aff-clicks"></canvas></div>
+              </div>
+              <div class="sub">
+                <h2>売上 TOP15</h2>
+                <div class="chart-wrap"><canvas id="c-aff-sales"></canvas></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" id="aff-detail" hidden>
+            <div class="card-head">
+              <h2 id="aff-detail-title"></h2>
+              <button class="btn link" id="aff-detail-close">閉じる</button>
+            </div>
+            <div class="kpis small" id="aff-detail-kpis"></div>
+            <div class="grid-2 fill">
+              <div class="sub">
+                <h3>流入元（リファラ）</h3>
+                <div class="chart-wrap"><canvas id="c-affd-ref"></canvas></div>
+              </div>
+              <div class="sub">
+                <h3>日別</h3>
+                <div class="chart-wrap"><canvas id="c-affd-daily"></canvas></div>
+              </div>
+              <div class="sub">
+                <h3>広告別</h3>
+                <div class="table-wrap"><table id="t-affd-ads"></table></div>
+              </div>
+              <div class="sub">
+                <h3>商品別</h3>
+                <div class="table-wrap"><table id="t-affd-products"></table></div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="chart-wrap tall"><canvas id="c-dim-bar"></canvas></div>
-      </div>
-      <div class="grid2">
+      </section>
+
+      <!-- 商品・広告 -->
+      <section class="view v-products" data-view="products" hidden>
+        <div class="card span2">
+          <div class="card-head">
+            <h2 id="dim-chart-title">軸別 集計</h2>
+            <div class="seg" id="dim">
+              <button class="chip is-active" data-dim="product">商品</button>
+              <button class="chip" data-dim="ad">広告</button>
+              <button class="chip" data-dim="campaign">キャンペーン</button>
+              <button class="chip" data-dim="advertiser">広告主</button>
+              <button class="chip" data-dim="ad_type">広告タイプ</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="c-dim-bar"></canvas></div>
+        </div>
         <div class="card">
-          <h2>構成比（成果件数）</h2>
+          <h2>構成比</h2>
           <div class="chart-wrap"><canvas id="c-dim-pie"></canvas></div>
+        </div>
+        <div class="card span2">
+          <div class="card-head">
+            <h2 id="dim-table-title">明細</h2>
+            <button class="btn sm" data-export="dimension">CSV</button>
+          </div>
+          <div class="table-wrap"><table id="t-dim"></table></div>
         </div>
         <div class="card">
           <h2>OS 内訳</h2>
           <div class="chart-wrap"><canvas id="c-dim-os"></canvas></div>
         </div>
-      </div>
-      <div class="card">
-        <div class="card-head">
-          <h2 id="dim-table-title">明細</h2>
-          <button class="btn" data-export="dimension">CSV出力</button>
-        </div>
-        <div class="table-wrap"><table id="t-dim"></table></div>
-      </div>
-    </section>
+      </section>
 
-    <!-- 流入元 -->
-    <section class="view" data-view="sources" hidden>
-      <div class="grid2">
+      <!-- 流入元 -->
+      <section class="view v-sources" data-view="sources" hidden>
         <div class="card">
           <h2>リファラ別 クリック</h2>
-          <div class="chart-wrap tall"><canvas id="c-src-clicks"></canvas></div>
+          <div class="chart-wrap"><canvas id="c-src-clicks"></canvas></div>
         </div>
         <div class="card">
           <h2>リファラ別 成果</h2>
-          <div class="chart-wrap tall"><canvas id="c-src-cv"></canvas></div>
+          <div class="chart-wrap"><canvas id="c-src-cv"></canvas></div>
         </div>
-      </div>
-      <div class="card">
-        <div class="card-head">
-          <h2>リファラ別 CVR</h2>
-          <button class="btn" data-export="sources">CSV出力</button>
+        <div class="card span2">
+          <div class="card-head">
+            <h2>リファラ別 CVR</h2>
+            <button class="btn sm" data-export="sources">CSV</button>
+          </div>
+          <div class="table-wrap"><table id="t-src"></table></div>
         </div>
-        <div class="table-wrap"><table id="t-src"></table></div>
-      </div>
-    </section>
+      </section>
 
-    <!-- 成果明細 -->
-    <section class="view" data-view="detail" hidden>
-      <div class="card">
-        <div class="card-head">
-          <h2>成果明細</h2>
-          <div class="row">
-            <input id="detail-search" type="search" placeholder="商品名・広告名・アフィリエイターID・注文ID・リファラ">
-            <button id="detail-go" class="btn primary">検索</button>
-            <button class="btn" data-export="conversions">CSV出力</button>
+      <!-- 成果明細 -->
+      <section class="view v-detail" data-view="detail" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>成果明細</h2>
+            <div class="row">
+              <input id="detail-search" type="search" placeholder="商品名・広告名・アフィリエイターID・注文ID・リファラ">
+              <button id="detail-go" class="btn primary sm">検索</button>
+              <button class="btn sm" data-export="conversions">CSV</button>
+              <span class="muted small" id="detail-count"></span>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="t-detail"></table></div>
+          <div class="pager">
+            <button class="btn sm" id="detail-prev">前へ</button>
+            <span id="detail-page" class="muted small"></span>
+            <button class="btn sm" id="detail-next">次へ</button>
           </div>
         </div>
-        <div class="muted small" id="detail-count"></div>
-        <div class="table-wrap"><table id="t-detail"></table></div>
-        <div class="pager">
-          <button class="btn" id="detail-prev">前へ</button>
-          <span id="detail-page" class="muted"></span>
-          <button class="btn" id="detail-next">次へ</button>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- データ取込 -->
-    <section class="view" data-view="import" hidden>
-      <div class="card">
-        <h2>ファイルを取り込む</h2>
-        <p class="muted">
-          マネートラックの「成果リスト」と「すべてのクリック」の xlsx / csv をそのまま入れられます。
-          ファイル種別は中身の見出しから自動判定します。<br>
-          <strong>IPアドレスの列は読み込み時に捨てて、保存しません。</strong>
-          同じファイルを入れ直しても二重には保存されません。
-        </p>
-        <div id="drop" class="drop">
-          <p>ここにファイルをドラッグ＆ドロップ</p>
-          <p class="muted small">または</p>
-          <label class="btn primary">
-            ファイルを選ぶ
-            <input type="file" id="file-input" accept=".xlsx,.xls,.csv" multiple hidden>
-          </label>
+      <!-- データ取込 -->
+      <section class="view v-import" data-view="import" hidden>
+        <div class="card">
+          <h2>ファイルを取り込む</h2>
+          <div id="drop" class="drop">
+            <p>ここに xlsx / csv をドラッグ＆ドロップ</p>
+            <label class="btn primary">
+              ファイルを選ぶ
+              <input type="file" id="file-input" accept=".xlsx,.xls,.csv" multiple hidden>
+            </label>
+            <p class="muted small">
+              成果リストとクリックデータは中身の見出しから自動判定します。<br>
+              <strong>IPアドレスの列は読み込み時に捨てて保存しません。</strong>
+              同じファイルを入れ直しても二重に保存されません。
+            </p>
+          </div>
+          <div class="row wrap">
+            <label class="inline">
+              クリックデータの広告主
+              <input id="import-advertiser" type="text" value="bestkenko">
+            </label>
+            <label class="inline check">
+              <input type="checkbox" id="import-force">
+              取り込み済みでも強制的に再取込
+            </label>
+          </div>
+          <ul class="log" id="import-log"></ul>
         </div>
-        <div class="row" style="margin-top:12px">
-          <label class="inline">
-            クリックデータの広告主 / プログラム名
-            <input id="import-advertiser" type="text" value="bestkenko">
-          </label>
-          <label class="inline check">
-            <input type="checkbox" id="import-force">
-            取り込み済みのファイルでも強制的に再取込
-          </label>
+        <div class="card">
+          <div class="card-head">
+            <h2>取り込み履歴</h2>
+            <button class="btn sm" id="imports-reload">更新</button>
+          </div>
+          <div class="table-wrap"><table id="t-imports"></table></div>
         </div>
-        <ul class="log" id="import-log"></ul>
-      </div>
-      <div class="card">
-        <div class="card-head">
-          <h2>取り込み履歴</h2>
-          <button class="btn" id="imports-reload">更新</button>
-        </div>
-        <div class="table-wrap"><table id="t-imports"></table></div>
-      </div>
-    </section>
-  </main>
+      </section>
+
+    </main>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
   <div id="busy" class="busy" hidden><div class="spinner"></div></div>

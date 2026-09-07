@@ -27,6 +27,12 @@ export function destroyAll() {
   registry.clear();
 }
 
+// 注意: Chart.js は display:none の器の中で初期化すると 0x0 に固定され、
+// あとから resize() を呼んでも戻らない。なので「ビューを表示にしてから描く」
+// 順序を守る必要がある（app.js のタブ切り替えは hidden を外してから render する）。
+// draw() は同じ canvas の既存インスタンスを毎回破棄して作り直すので、
+// 表示状態で render し直せば必ず正しい寸法になる。
+
 function draw(canvasId, config) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return null;

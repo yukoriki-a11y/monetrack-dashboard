@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080114';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080135';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -75,13 +75,15 @@ async function rpc(name, args) {
   return data;
 }
 
-// フィルタ条件をまとめて RPC 引数に変換する
+// フィルタ条件をまとめて RPC 引数に変換する。
+// 空配列は「絞らない」の意味なので null にして渡す。
 function base(f) {
   return {
     p_from: f.from,
     p_to: f.to,
     p_statuses: f.statuses?.length ? f.statuses : null,
     p_advertisers: f.advertisers?.length ? f.advertisers : null,
+    p_affiliates: f.affiliates?.length ? f.affiliates : null,
   };
 }
 
@@ -92,8 +94,14 @@ export const api = {
   affiliates:(f, limit = 300)    => rpc('dash_affiliates', { ...base(f), p_limit: limit }),
   dimension: (f, dim, limit = 50, affiliate = null) =>
     rpc('dash_dimension', { ...base(f), p_dim: dim, p_limit: limit, p_affiliate: affiliate }),
+  // 単体詳細はアフィリエイターを指定して呼ぶので、絞り込みの p_affiliates は渡さない
   affiliateDetail: (affiliateId, f) =>
-    rpc('dash_affiliate_detail', { p_affiliate: affiliateId, ...base(f) }),
+    rpc('dash_affiliate_detail', {
+      p_affiliate: affiliateId,
+      p_from: f.from, p_to: f.to,
+      p_statuses: f.statuses?.length ? f.statuses : null,
+      p_advertisers: f.advertisers?.length ? f.advertisers : null,
+    }),
   compare: (f, dim, keys, grain = 'day', limit = 5) =>
     rpc('dash_compare', {
       p_from: f.from, p_to: f.to,
@@ -102,6 +110,7 @@ export const api = {
       p_keys: keys?.length ? keys : null,
       p_grain: grain,
       p_limit: limit,
+      p_advertisers: f.advertisers?.length ? f.advertisers : null,
     }),
   conversions: (f, search, limit, offset) =>
     rpc('dash_conversions', { ...base(f), p_search: search || null, p_limit: limit, p_offset: offset }),

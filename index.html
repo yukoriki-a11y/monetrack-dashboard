@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609080114">
+<link rel="stylesheet" href="css/app.css?v=202609080135">
 </head>
 <body>
 
@@ -111,19 +111,23 @@
   <div class="content">
 
     <div class="filterbar" id="filterbar">
+      <!-- 期間: 月をカタカタ選ぶ + 過去1週間 / 全期間 -->
       <div class="fb-group">
-        <input type="date" id="f-from" aria-label="開始日">
-        <span class="dash">〜</span>
-        <input type="date" id="f-to" aria-label="終了日">
+        <input type="month" id="f-month" aria-label="表示する年月">
+        <div class="seg" id="presets">
+          <button class="chip" data-preset="7">過去1週間</button>
+          <button class="chip" data-preset="all">全期間</button>
+        </div>
       </div>
 
-      <div class="fb-group" id="presets">
-        <button class="chip" data-preset="7">7日</button>
-        <button class="chip" data-preset="30">30日</button>
-        <button class="chip" data-preset="thismonth">今月</button>
-        <button class="chip" data-preset="lastmonth">先月</button>
-        <button class="chip" data-preset="all">全期間</button>
-      </div>
+      <details class="dropdown" id="f-range-dd">
+        <summary id="f-range-label">期間を指定</summary>
+        <div class="menu narrow">
+          <label class="inline">開始 <input type="date" id="f-from"></label>
+          <label class="inline">終了 <input type="date" id="f-to"></label>
+          <button id="f-apply" class="btn primary sm">この期間で表示</button>
+        </div>
+      </details>
 
       <div class="fb-group" id="f-status"></div>
 
@@ -132,7 +136,11 @@
         <div class="menu" id="f-advertiser"></div>
       </details>
 
-      <button id="f-apply" class="btn primary sm">反映</button>
+      <details class="dropdown" id="f-affiliate-dd">
+        <summary id="f-affiliate-label">アフィリエイター: 全て</summary>
+        <div class="menu" id="f-affiliate"></div>
+      </details>
+
       <div class="muted small fb-range" id="data-range"></div>
     </div>
 
@@ -433,6 +441,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609080114"></script>
+<script type="module" src="js/app.js?v=202609080135"></script>
 </body>
 </html>

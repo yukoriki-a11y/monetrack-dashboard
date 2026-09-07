@@ -292,8 +292,8 @@ label.inline.check { cursor: pointer; }
   z-index: 40;
   top: calc(100% + 4px);
   left: 0;
-  min-width: 220px;
-  max-height: 320px;
+  min-width: 260px;
+  max-height: 360px;
   overflow: auto;
   background: var(--panel);
   border-radius: 8px;
@@ -301,7 +301,52 @@ label.inline.check { cursor: pointer; }
   padding: 8px;
   display: grid;
   gap: 3px;
+  align-content: start;
 }
+.dropdown .menu.narrow { min-width: 200px; }
+/* 右端に近いドロップダウンは左に開く */
+.dropdown.to-left .menu { left: auto; right: 0; }
+
+/* 一括操作の並び。スクロールしても上に残す */
+.menu-tools {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 4px 2px 6px;
+  margin: -8px -2px 2px;
+  background: var(--panel);
+}
+.menu-empty { padding: 6px 4px; }
+
+/* 選択肢の1行。★でお気に入り、チェックで絞り込み対象 */
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pick:hover { background: var(--panel-2); }
+.pick .name { overflow: hidden; text-overflow: ellipsis; }
+.pick .fav {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 3px;
+  color: var(--ink-3);
+  box-shadow: none;
+}
+.pick .fav:hover { color: var(--ink); background: none; }
+.pick .fav.on { color: var(--ink); }
 
 /* =====================================================================
    表示領域 — 各ビューが 1 画面に収まる grid
@@ -323,6 +368,12 @@ label.inline.check { cursor: pointer; }
 }
 #mt-rate { width: 62px; text-align: right; }
 
+/* 日別明細だけは罫線を引く（数字を横に追うので、区切りが無いと読みにくい）。
+   土日祝は地の色を変えて分かるようにする。 */
+.matrix-grid { --grid: color-mix(in srgb, var(--ink) 14%, transparent); }
+.matrix-sat  { --tint: color-mix(in srgb, #3b6fd4 13%, transparent); }
+.matrix-sun  { --tint: color-mix(in srgb, #cf4740 13%, transparent); }
+
 /* 日付を横に並べる表。
    指標名の列だけ左に固定し、日付の部分を横スクロールさせる。 */
 .matrix-wrap {
@@ -331,11 +382,42 @@ label.inline.check { cursor: pointer; }
   border-radius: 8px;
   background: var(--panel-2);
 }
-table.matrix { width: auto; min-width: 100%; }
+table.matrix {
+  width: auto;
+  min-width: 100%;
+  --grid: color-mix(in srgb, var(--ink) 13%, transparent);
+}
 table.matrix th, table.matrix td { white-space: nowrap; cursor: default; }
-table.matrix thead th { min-width: 96px; text-align: right; padding: 6px 10px; box-shadow: none; }
-table.matrix td { min-width: 96px; text-align: right; font-variant-numeric: tabular-nums; padding: 7px 10px; }
+
+/* 罫線 */
+table.matrix thead th,
+table.matrix tbody td,
+table.matrix tbody th { border-right: 1px solid var(--grid); }
+table.matrix thead th { border-bottom: 1px solid var(--grid); }
+table.matrix tbody tr + tr td,
+table.matrix tbody tr + tr th { border-top: 1px solid var(--grid); }
+
+/* 日付と曜日は中央寄せ、数字は右寄せ */
+table.matrix thead th { min-width: 100px; text-align: center; padding: 5px 10px; box-shadow: none; }
+table.matrix td { min-width: 100px; text-align: right; font-variant-numeric: tabular-nums; padding: 7px 10px; }
 table.matrix .wd { display: block; font-size: 10px; font-weight: 400; color: var(--ink-3); }
+
+/* 土日祝。地の色と曜日の文字色で示す */
+table.matrix .is-sat, table.matrix .is-sun, table.matrix .is-holiday { background: var(--tint); }
+table.matrix .is-sat     { --tint: color-mix(in srgb, #3b6fd4 12%, transparent); }
+table.matrix .is-sun,
+table.matrix .is-holiday { --tint: color-mix(in srgb, #cf4740 12%, transparent); }
+table.matrix thead th.is-sat .wd     { color: #2d5cb8; }
+table.matrix thead th.is-sun .wd,
+table.matrix thead th.is-holiday .wd { color: #bc3f38; }
+@media (prefers-color-scheme: dark) {
+  table.matrix .is-sat     { --tint: color-mix(in srgb, #6f9cff 16%, transparent); }
+  table.matrix .is-sun,
+  table.matrix .is-holiday { --tint: color-mix(in srgb, #ff8078 15%, transparent); }
+  table.matrix thead th.is-sat .wd     { color: #8fb4ff; }
+  table.matrix thead th.is-sun .wd,
+  table.matrix thead th.is-holiday .wd { color: #ff9c95; }
+}
 
 /* 左端に固定する指標名の列 */
 table.matrix th.rowhead {

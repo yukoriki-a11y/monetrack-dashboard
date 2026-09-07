@@ -1,17 +1,18 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080114';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080114';
-import * as ch from './charts.js?v=202609080114';
-import { renderTable, resetSort } from './table.js?v=202609080114';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080114';
-import { initMyPage, renderMyPage, exportMyPage } from './mypage.js?v=202609080114';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080135';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080135';
+import * as ch from './charts.js?v=202609080135';
+import { renderTable, resetSort } from './table.js?v=202609080135';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080135';
+import { initMyPage, renderMyPage, exportMyPage } from './mypage.js?v=202609080135';
+import { dayKind, holidayName } from './holiday.js?v=202609080135';
 
 // ---- 状態 --------------------------------------------------------------
 
 const state = {
   view: 'summary',
-  filter: { from: null, to: null, statuses: [], advertisers: [] },
+  filter: { from: null, to: null, statuses: [], advertisers: [], affiliates: [] },
   meta: null,           // dash_filters の結果
   grain: 'day',
   dim: 'product',
@@ -194,6 +195,9 @@ function wireTabs() {
 function wireFilters() {
   $('#f-apply').addEventListener('click', () => {
     readFilterInputs();
+    $('#f-month').value = '';
+    $$('#presets .chip').forEach((c) => c.classList.remove('is-active'));
+    $('#f-range-dd').open = false;
     render();
   });
   $('#presets').addEventListener('click', (e) => {
@@ -202,6 +206,26 @@ function wireFilters() {
     $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c === btn));
     applyPreset(btn.dataset.preset);
     render();
+  });
+  // 年月をカタカタ変えるとその月に切り替わる
+  $('#f-month').addEventListener('change', () => {
+    applyMonth($('#f-month').value);
+    render();
+  });
+
+  // 開いたドロップダウン以外は閉じる。右端に近いものは左向きに開く。
+  const dds = $$('details.dropdown');
+  for (const dd of dds) {
+    dd.addEventListener('toggle', () => {
+      if (!dd.open) return;
+      for (const other of dds) if (other !== dd) other.open = false;
+      const rect = dd.getBoundingClientRect();
+      dd.classList.toggle('to-left', rect.left + 280 > innerWidth);
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('details.dropdown')) return;
+    for (const dd of dds) dd.open = false;
   });
 }
 
@@ -311,12 +335,19 @@ function wireViewControls() {
 // ---- フィルタ ----------------------------------------------------------
 
 async function loadMeta() {
+  // 起動直後に一度だけ失敗することがある（接続の立ち上がり）。
+  // ここで諦めるとフィルタが空のまま残ってしまうので、1回だけ入れ直す。
   try {
     state.meta = await api.filters();
-  } catch (e) {
-    toast('メタ情報の取得に失敗: ' + e.message);
-    state.meta = null;
-    return;
+  } catch (first) {
+    await new Promise((r) => setTimeout(r, 400));
+    try {
+      state.meta = await api.filters();
+    } catch (e) {
+      toast('フィルタ情報の取得に失敗: ' + e.message);
+      state.meta = null;
+      return;
+    }
   }
   const m = state.meta;
 
@@ -334,18 +365,9 @@ async function loadMeta() {
   }
   if (!statuses.length) box.append(el('span', { class: 'muted small', text: 'データ未取込' }));
 
-  // 広告主（チェックボックスのドロップダウン。何も選ばなければ「全て」）
-  const box2 = $('#f-advertiser');
-  const prevAdv = new Set(state.filter.advertisers);
-  box2.replaceChildren();
-  const advertisers = m.advertisers || [];
-  for (const a of advertisers) {
-    const cb = el('input', { type: 'checkbox', value: a });
-    cb.checked = prevAdv.has(a);
-    cb.addEventListener('change', () => { readFilterInputs(); updateAdvertiserLabel(); render(); });
-    box2.append(el('label', { class: 'inline check' }, cb, a));
-  }
-  if (!advertisers.length) box2.append(el('span', { class: 'muted small', text: 'データ未取込' }));
+  // 広告主・アフィリエイター（チェックボックス＋お気に入り。何も選ばなければ「全て」）
+  buildPicker('advertiser', m.advertisers || []);
+  buildPicker('affiliate', m.affiliates || []);
 
   const range = [];
   if (m.cv_date_min) range.push(`成果 ${m.cv_date_min}〜${m.cv_date_max}（${num(m.cv_rows)}件）`);
@@ -353,47 +375,146 @@ async function loadMeta() {
   $('#data-range').textContent = range.join(' / ') || 'データがありません。「データ取込」から入れてください。';
 
   readFilterInputs();
-  updateAdvertiserLabel();
+  updatePickerLabel('advertiser');
+  updatePickerLabel('affiliate');
 }
 
 function readFilterInputs() {
   state.filter.from = $('#f-from').value || state.filter.from;
   state.filter.to = $('#f-to').value || state.filter.to;
   state.filter.statuses = $$('#f-status input:checked').map((c) => c.value);
-  state.filter.advertisers = $$('#f-advertiser input:checked').map((c) => c.value);
+  state.filter.advertisers = $$('#f-advertiser input[type=checkbox]:checked').map((c) => c.value);
+  state.filter.affiliates = $$('#f-affiliate input[type=checkbox]:checked').map((c) => c.value);
 }
 
-function updateAdvertiserLabel() {
-  const picked = state.filter.advertisers;
-  $('#f-advertiser-label').textContent = picked.length
-    ? `広告主: ${picked.length === 1 ? picked[0] : picked.length + '件'}`
-    : '広告主: 全て';
+// ---- 広告主 / アフィリエイターの選択（お気に入り付き） ------------------
+
+const PICKERS = {
+  advertiser: { label: '広告主', box: '#f-advertiser', tag: '#f-advertiser-label', key: 'advertisers' },
+  affiliate:  { label: 'アフィリエイター', box: '#f-affiliate', tag: '#f-affiliate-label', key: 'affiliates' },
+};
+
+const LS_FAV = (kind) => `afd.fav.${kind}`;
+
+function favorites(kind) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_FAV(kind)) || '[]');
+    return new Set(Array.isArray(raw) ? raw : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function toggleFavorite(kind, name) {
+  const set = favorites(kind);
+  if (set.has(name)) set.delete(name);
+  else set.add(name);
+  localStorage.setItem(LS_FAV(kind), JSON.stringify([...set]));
+}
+
+// 一覧をお気に入り優先で並べる（★が上、その中はもとの順）
+function sortByFavorite(items, fav) {
+  return items.slice().sort((a, b) => (fav.has(b) ? 1 : 0) - (fav.has(a) ? 1 : 0));
+}
+
+function buildPicker(kind, items) {
+  const p = PICKERS[kind];
+  const box = $(p.box);
+  const fav = favorites(kind);
+  const prev = new Set(state.filter[p.key]);
+
+  box.replaceChildren();
+
+  if (!items.length) {
+    box.append(el('p', { class: 'muted small menu-empty', text: 'データ未取込' }));
+    updatePickerLabel(kind);
+    return;
+  }
+
+  const apply = () => {
+    readFilterInputs();
+    updatePickerLabel(kind);
+    render();
+  };
+  const setAll = (on) => {
+    $$(`${p.box} input[type=checkbox]`).forEach((c) => { c.checked = on; });
+    apply();
+  };
+  const setFavOnly = () => {
+    const f = favorites(kind);
+    $$(`${p.box} input[type=checkbox]`).forEach((c) => { c.checked = f.has(c.value); });
+    apply();
+  };
+
+  box.append(el('div', { class: 'menu-tools' },
+    el('button', { type: 'button', class: 'chip', text: 'すべて', onclick: () => setAll(true) }),
+    el('button', { type: 'button', class: 'chip', text: '解除', onclick: () => setAll(false) }),
+    el('button', { type: 'button', class: 'chip', text: '★だけ', title: 'お気に入りに付けたものだけで絞る', onclick: setFavOnly }),
+  ));
+
+  for (const name of sortByFavorite(items, fav)) {
+    const cb = el('input', { type: 'checkbox', value: name });
+    cb.checked = prev.has(name);
+    cb.addEventListener('change', apply);
+
+    const star = el('button', {
+      type: 'button',
+      class: `fav${fav.has(name) ? ' on' : ''}`,
+      text: fav.has(name) ? '★' : '☆',
+      title: 'お気に入り',
+    });
+    // ラベルの中のボタンなので、クリックがチェックに伝わらないようにする
+    star.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFavorite(kind, name);
+      buildPicker(kind, items);
+    });
+
+    box.append(el('label', { class: 'pick' }, cb, el('span', { class: 'name', text: name }), star));
+  }
+  updatePickerLabel(kind);
+}
+
+function updatePickerLabel(kind) {
+  const p = PICKERS[kind];
+  const picked = state.filter[p.key] || [];
+  const fav = favorites(kind);
+  const allFav = picked.length > 0 && picked.length === fav.size && picked.every((x) => fav.has(x));
+  $(p.tag).textContent = picked.length
+    ? `${p.label}: ${allFav ? '★のみ' : picked.length === 1 ? picked[0] : picked.length + '件'}`
+    : `${p.label}: 全て`;
 }
 
 function applyPreset(preset) {
   const m = state.meta || {};
   const today = new Date();
-  let from;
-  let to = today;
 
   if (preset === 'all') {
     const mins = [m.cv_date_min, m.ck_date_min].filter(Boolean).sort();
     const maxs = [m.cv_date_max, m.ck_date_max].filter(Boolean).sort();
-    $('#f-from').value = mins[0] || ymd(addDays(today, -30));
-    $('#f-to').value = maxs[maxs.length - 1] || ymd(today);
-    readFilterInputs();
+    setRange(mins[0] || ymd(addDays(today, -30)), maxs[maxs.length - 1] || ymd(today));
+    $('#f-month').value = '';
     return;
   }
-  if (preset === 'thismonth') {
-    from = new Date(today.getFullYear(), today.getMonth(), 1);
-  } else if (preset === 'lastmonth') {
-    from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    to = new Date(today.getFullYear(), today.getMonth(), 0);
-  } else {
-    from = addDays(today, -(Number(preset) - 1));
-  }
-  $('#f-from').value = ymd(from);
-  $('#f-to').value = ymd(to);
+  // 過去1週間（今日を含む7日）
+  setRange(ymd(addDays(today, -(Number(preset) - 1))), ymd(today));
+  $('#f-month').value = '';
+}
+
+// 年月（YYYY-MM）→ その月の1日〜末日
+function applyMonth(value) {
+  const m = /^(\d{4})-(\d{2})$/.exec(value || '');
+  if (!m) return;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  setRange(ymd(new Date(year, month - 1, 1)), ymd(new Date(year, month, 0)));
+  $$('#presets .chip').forEach((c) => c.classList.remove('is-active'));
+}
+
+function setRange(from, to) {
+  $('#f-from').value = from;
+  $('#f-to').value = to;
   readFilterInputs();
 }
 
@@ -446,10 +567,13 @@ async function renderSummary() {
     const r = byDay.get(key);
     const sales = Number(r?.sales || 0);
     const reward = Number(r?.reward || 0);
+    const kind = dayKind(key, d.getDay());
     rows.push({
       bucket: key,
       md: key.slice(5).replace('-', '/'),
       wd: WEEKDAY[d.getDay()],
+      kind,                                   // 'sat' | 'sun' | 'holiday' | null
+      holiday: holidayName(key),
       conversions: Number(r?.conversions || 0),
       sales,
       reward,
@@ -489,15 +613,24 @@ function renderDailyMatrix(rows) {
     { key: 'conversions', label: '成果件数', fmt: num },
   ];
 
+  // 土日祝と最新日は class で見分ける（色は CSS 側）
+  const cls = (r, i) => [
+    r.kind ? `is-${r.kind}` : '',
+    i === last ? 'is-latest' : '',
+  ].filter(Boolean).join(' ') || null;
+
   table.replaceChildren(
     el('thead', {}, el('tr', {},
       el('th', { class: 'rowhead', text: '日付' }),
-      ...rows.map((r, i) => el('th', { class: i === last ? 'is-latest' : null },
-        r.md,
-        el('span', { class: 'wd', text: r.wd }))))),
+      ...rows.map((r, i) => el('th', {
+        class: cls(r, i),
+        title: r.holiday ? `${r.bucket} ${r.holiday}` : r.bucket,
+      },
+      r.md,
+      el('span', { class: 'wd', text: r.holiday ? '祝' : r.wd }))))),
     el('tbody', {}, ...metrics.map((m) => el('tr', {},
       el('th', { class: 'rowhead', text: m.label }),
-      ...rows.map((r, i) => el('td', { class: i === last ? 'is-latest' : null, text: m.fmt(r[m.key]) }))))),
+      ...rows.map((r, i) => el('td', { class: cls(r, i), text: m.fmt(r[m.key]) }))))),
   );
 
   // 直近の日付が見えている状態で開きたいので、右端まで寄せる

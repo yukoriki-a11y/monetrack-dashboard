@@ -1,7 +1,7 @@
 // Chart.js の薄いラッパ。同じ canvas に描き直すときは古いインスタンスを破棄する。
 
-import { compact, num, yen } from './util.js?v=202609080951';
-import { palette, isDark } from './settings.js?v=202609080951';
+import { compact, num, yen } from './util.js?v=202609080958';
+import { palette, isDark } from './settings.js?v=202609080958';
 
 const registry = new Map();
 

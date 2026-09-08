@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080951';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080951';
-import * as ch from './charts.js?v=202609080951';
-import { renderTable, resetSort } from './table.js?v=202609080951';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080951';
-import { dayKind, holidayName } from './holiday.js?v=202609080951';
-import * as cfg from './settings.js?v=202609080951';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080958';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080958';
+import * as ch from './charts.js?v=202609080958';
+import { renderTable, resetSort } from './table.js?v=202609080958';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080958';
+import { dayKind, holidayName } from './holiday.js?v=202609080958';
+import * as cfg from './settings.js?v=202609080958';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -1901,7 +1901,27 @@ async function renderDetail() {
 
 // ---- CSV 出力 ----------------------------------------------------------
 
-function exportCsv(kind) {
+// 成果明細は画面に出ている100件だけでなく、条件に合う全件を出す。
+// 1回で取ると重いので、ページ送りしながら集める。
+const CSV_PAGE = 1000;
+
+async function fetchAllConversions() {
+  const d = state.detail;
+  const out = [];
+  let total = Infinity;
+
+  while (out.length < total) {
+    const rows = await api.conversions(state.filter, d.search, CSV_PAGE, out.length);
+    if (!rows.length) break;
+    total = Number(rows[0].total_count) || rows.length;
+    out.push(...rows);
+    if (rows.length < CSV_PAGE) break;
+    if (out.length < total) toast(`CSVを作成中… ${num(out.length)} / ${num(total)} 件`);
+  }
+  return out;
+}
+
+async function exportCsv(kind) {
   const stamp = `${state.filter.from}_${state.filter.to}`;
   if (kind === 'summary') {
     downloadCsv(`日別売上_${stamp}.csv`,
@@ -1945,12 +1965,23 @@ function exportCsv(kind) {
     downloadCsv(`ランキング_${metric.label}_${stamp}.csv`,
       ['種類', '順位', '名前', '成果件数', '売上', '報酬額', 'クリック'], rows);
   } else if (kind === 'conversions') {
-    downloadCsv(`成果明細_${stamp}.csv`,
-      ['発生日時', 'ステータス', '広告主', 'アフィリエイター', '商品名', '広告名', 'キャンペーン',
-        '数量', '販売価格', '報酬額', '報酬率', '支払い状況', 'デバイス', 'OS', '初回リファラ', '注文ID'],
-      state.detail.rows.map((r) => [
-        r.occurred_at, r.status, r.advertiser_id, r.affiliate_id, r.product_name, r.ad_name, r.campaign,
-        r.qty, r.sale_price, r.reward, r.reward_rate, r.pay_status, r.device, r.os, r.first_referrer, r.order_id]));
+    // 画面は100件ずつだが、CSV は条件に合う全件を出す
+    busy(true);
+    try {
+      const all = await fetchAllConversions();
+      if (!all.length) { toast('出力する成果がありません'); return; }
+      downloadCsv(`成果明細_${stamp}.csv`,
+        ['発生日時', 'ステータス', '広告主', 'アフィリエイター', '商品名', '広告名', 'キャンペーン',
+          '数量', '販売価格', '報酬額', '報酬率', '支払い状況', 'デバイス', 'OS', '初回リファラ', '注文ID'],
+        all.map((r) => [
+          r.occurred_at, r.status, r.advertiser_id, r.affiliate_id, r.product_name, r.ad_name, r.campaign,
+          r.qty, r.sale_price, r.reward, r.reward_rate, r.pay_status, r.device, r.os, r.first_referrer, r.order_id]));
+      toast(`${num(all.length)} 件を出力しました`);
+    } catch (e) {
+      toast('CSVを作れませんでした: ' + e.message);
+    } finally {
+      busy(false);
+    }
   }
 }
 

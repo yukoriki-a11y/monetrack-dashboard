@@ -1036,7 +1036,11 @@ begin
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
-      and (p.proname like 'dash\_%' or p.proname like 'import\_%')
+      -- 名前で選ばず public の関数を全部見る。
+      -- dash_ / import_ だけを見ていたころ、補助の関数に PUBLIC 実行権が
+      -- 残っていた（jst_start など）。関数を足すたびに取りこぼすので、
+      -- ここは決め打ちにしない。
+      and p.prokind = 'f'
   loop
     execute format('revoke all on function %s from public', fn.sig);
     execute format('revoke all on function %s from anon', fn.sig);

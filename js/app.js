@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080958';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080958';
-import * as ch from './charts.js?v=202609080958';
-import { renderTable, resetSort } from './table.js?v=202609080958';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080958';
-import { dayKind, holidayName } from './holiday.js?v=202609080958';
-import * as cfg from './settings.js?v=202609080958';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081008';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081008';
+import * as ch from './charts.js?v=202609081008';
+import { renderTable, resetSort } from './table.js?v=202609081008';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081008';
+import { dayKind, holidayName } from './holiday.js?v=202609081008';
+import * as cfg from './settings.js?v=202609081008';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -601,6 +601,8 @@ function readBoxes(sel) {
 
 function readFilterInputs() {
   const off = pickerOff(state.view);
+  // 条件が変われば件数も変わる。ページ送りは1ページ目に戻す。
+  state.detail.page = 0;
   state.filter.from = $('#f-from').value || state.filter.from;
   state.filter.to = $('#f-to').value || state.filter.to;
   state.filter.statuses = readBoxes('#f-status input[type=checkbox]');
@@ -1854,6 +1856,15 @@ function fmtMetric(v, metric) {
 async function renderDetail() {
   const d = state.detail;
   const rows = await api.conversions(state.filter, d.search, d.size, d.page * d.size);
+
+  // 何ページも送ったあとで期間や絞り込みを変えると、件数が減って
+  // 「ページの先」を見に行ったままになり、表が丸ごと空になる。
+  // その場合は黙って1ページ目に戻す。
+  if (!rows.length && d.page > 0) {
+    d.page = 0;
+    return renderDetail();
+  }
+
   d.rows = rows;
   d.total = rows.length ? Number(rows[0].total_count) : 0;
 

@@ -15,4 +15,4 @@ export const DEFAULT_SUPABASE_URL = 'https://xkolhtdajziwjagflqjd.supabase.co';
 
 // ↓ Supabase → Project Settings → API Keys の
 //   「Publishable」または「anon public」の値を貼る
-export const DEFAULT_SUPABASE_ANON_KEY = '';
+export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_XEU1LLp4E6D1XnldNOZSXQ_HfKkImPE';

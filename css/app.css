@@ -1038,6 +1038,42 @@ thead th.sorted-desc .th-label::after { content: " ▼"; color: var(--ink); font
 }
 .ent-link:hover { text-decoration-style: solid; color: var(--ink); }
 
+/* 外のサイトを開くリンク（流入元） */
+.ext-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
+  text-underline-offset: 2px;
+}
+.ext-link:hover { text-decoration-style: solid; color: var(--ink); }
+.ext-link::after { content: " ↗"; font-size: 9px; color: var(--ink-3); }
+
+/* 流入元の一覧（円グラフの下に置いて、そのまま開けるようにする） */
+ul.ref-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+ul.ref-links li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+ul.ref-links li > i { width: 8px; height: 8px; border-radius: 2px; }
+ul.ref-links .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.ref-links .vl { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* 円グラフと一覧を上下に分ける（一覧だけ中でスクロール） */
+.eb-cell[data-part="referrer"] .eb-body { grid-template-rows: 150px minmax(0, 1fr); }
+.eb-cell[data-part="referrer"] .chart-wrap { height: 150px; min-height: 0; }
+
 /* マウスを少し置いたときに出る小さな要約 */
 .ent-card {
   position: fixed;

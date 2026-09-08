@@ -6,10 +6,10 @@
 // 4. 500 行ずつに分けて RPC へ送る（行レベルでも重複は弾かれる）
 // 5. 取り込み履歴に記録
 
-import { $, el, num, fmtDateTime, chunk } from './util.js?v=202609081416';
-import { api } from './db.js?v=202609081416';
-import { readFile, detectKind, parseConversions, parseClicks } from './parse.js?v=202609081416';
-import { renderTable } from './table.js?v=202609081416';
+import { $, el, num, fmtDateTime, chunk, nameNode } from './util.js?v=202609081424';
+import { api } from './db.js?v=202609081424';
+import { readFile, detectKind, parseConversions, parseClicks } from './parse.js?v=202609081424';
+import { renderTable } from './table.js?v=202609081424';
 
 const CHUNK = 500;
 
@@ -141,7 +141,7 @@ export async function loadImportHistory() {
       { key: 'imported_at', label: '取込日時', render: (r) => fmtDateTime(r.imported_at), cellClass: 'num' },
       { key: 'file_name', label: 'ファイル名' },
       { key: 'kind', label: '種別', render: (r) => (r.kind === 'conversions' ? '成果' : 'クリック'), cellClass: null },
-      { key: 'advertiser_id', label: '広告主' },
+      { key: 'advertiser_id', label: '広告主', render: (r) => nameNode('advertiser', r.advertiser_id) },
       { key: 'row_count', label: '行数', type: 'num' },
       { key: 'inserted_count', label: '新規', type: 'num' },
       { key: 'updated_count', label: '更新', type: 'num' },

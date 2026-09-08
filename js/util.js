@@ -196,6 +196,59 @@ export function debounce(fn, ms = 250) {
   };
 }
 
+// 広告主名・アフィリエイター名を「押せる名前」にする。
+// クリックとマウス置きの扱いは app.js が画面全体でまとめて拾うので、
+// ここでは目印（data-kind / data-name）を付けた button を返すだけ。
+// 取り込み画面など、app.js の外からも使うので util に置いてある。
+export const ENT_LABEL = { advertiser: '広告主', affiliate: 'アフィリエイター' };
+
+export function nameNode(kind, label) {
+  const text = label === null || label === undefined ? '' : String(label);
+  // 「(なし)」や空はページが無いので、ただの文字にしておく
+  if (!ENT_LABEL[kind] || !text || text === '(なし)') return text;
+  return el('button', {
+    type: 'button',
+    class: 'ent-link',
+    'data-kind': kind,
+    'data-name': text,
+    title: `クリックで${ENT_LABEL[kind]}のページへ／少し置くと直近3カ月`,
+    text,
+  });
+}
+
+// ---- 流入元を開くリンク ------------------------------------------------
+// 値は取り込んだファイルから来る（＝こちらで中身を保証できない）ので、
+// http / https だけを通す。javascript: のような細工を踏まないため。
+
+function safeHref(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `https://${s}`);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    if (!u.hostname.includes('.')) return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+// ホスト名（example.com）から、そのサイトを開くリンクを作る
+export function hostLink(host, label = null) {
+  const text = String(host || '');
+  const href = safeHref(text);
+  if (!href) return text;
+  return el('a', {
+    class: 'ext-link',
+    href,
+    target: '_blank',
+    // 開いた先からこちらのタブを触られないようにする
+    rel: 'noopener noreferrer nofollow',
+    title: `${href} を開く`,
+    text: label || text,
+  });
+}
+
 export function statusBadge(status) {
   const cls = status === '承認' ? 'ok' : status === '却下' ? 'ng' : 'hold';
   return el('span', { class: `badge ${cls}`, text: status || '—' });

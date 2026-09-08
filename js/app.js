@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081416';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081416';
-import * as ch from './charts.js?v=202609081416';
-import { renderTable, resetSort } from './table.js?v=202609081416';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081416';
-import { dayKind, holidayName } from './holiday.js?v=202609081416';
-import * as cfg from './settings.js?v=202609081416';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609081424';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081424';
+import * as ch from './charts.js?v=202609081424';
+import { renderTable, resetSort } from './table.js?v=202609081424';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081424';
+import { dayKind, holidayName } from './holiday.js?v=202609081424';
+import * as cfg from './settings.js?v=202609081424';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -219,11 +219,11 @@ async function startApp(user) {
 
   await loadMeta();
 
-  // 最初のページ（サマリー）の初期条件は全期間。
-  // データがまだ無いときは applyPreset 側で直近30日に落ちる。
+  // 最初のページ（サマリー）は直近3カ月で開く。
+  // 全期間だと日別明細が長くなりすぎて、いつも横スクロールになるため。
   state.filters.summary = state.filter;
-  $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === 'all'));
-  applyPreset('all');
+  $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === 'm3'));
+  applyPreset('m3');
   await render();
 }
 
@@ -799,14 +799,23 @@ function applyPreset(preset) {
   state.filter.month = '';
   $('#f-month').value = '';
 
+  // データがある最後の日。これを「直近」の起点にする。
+  // 今日を起点にすると、取り込みが数日遅れているだけで空の期間を見てしまう。
+  const maxs = [m.cv_date_max, m.ck_date_max].filter(Boolean).sort();
+  const last = maxs.length ? new Date(maxs[maxs.length - 1]) : today;
+
   if (preset === 'all') {
     const mins = [m.cv_date_min, m.ck_date_min].filter(Boolean).sort();
-    const maxs = [m.cv_date_max, m.ck_date_max].filter(Boolean).sort();
     setRange(mins[0] || ymd(addDays(today, -30)), maxs[maxs.length - 1] || ymd(today));
     return;
   }
-  // 過去1週間（今日を含む7日）
-  setRange(ymd(addDays(today, -(Number(preset) - 1))), ymd(today));
+  if (preset === 'm3') {
+    // 直近3カ月。月の途中で切らず、3カ月前の1日から。
+    setRange(ymd(new Date(last.getFullYear(), last.getMonth() - 2, 1)), ymd(last));
+    return;
+  }
+  // 数字を渡された場合は「その日数ぶん（最後の日を含む）」
+  setRange(ymd(addDays(last, -(Number(preset) - 1))), ymd(last));
 }
 
 // 月の選択肢を作る。新しい月が上、いちばん下が 2025/1。
@@ -1305,7 +1314,9 @@ async function renderEntity(kind) {
   if (token !== entityToken) return;
 
   const q = st.search.trim().toLowerCase();
-  const rows = q ? all.filter((r) => String(r.label).toLowerCase().includes(q)) : all;
+  // dash_dimension は成果件数の多い順。かたまりは売上の大きい順に並べたいので直す。
+  const sorted = all.slice().sort((a, b) => Number(b.sales || 0) - Number(a.sales || 0));
+  const rows = q ? sorted.filter((r) => String(r.label).toLowerCase().includes(q)) : sorted;
   st.rows = rows.map((r) => ({
     ...r,
     cvr: Number(r.clicks) > 0 ? (Number(r.conversions) / Number(r.clicks)) * 100 : null,
@@ -1369,7 +1380,8 @@ function entityShell(kind, row, parts) {
 
   return el('section', { class: 'eblock', 'data-id': row.label },
     el('header', { class: 'eb-head' },
-      el('h3', { text: row.label }),
+      // 見出しの名前も押せる（複数選んでいるとき、その相手だけに絞れる）
+      el('h3', {}, nameNode(kind, row.label)),
       el('span', { class: 'eb-stats' },
         `売上 ${yen(row.sales)}`,
         el('span', { class: 'sep', text: '/' }), `成果 ${num(row.conversions)}件`,
@@ -1499,18 +1511,41 @@ function drawEntityPart(kind, id, part, cell, data) {
       return;
     }
     const cid = `c-${kind}-${part}-${safeId}`;
-    cell.replaceChildren(el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })));
+    const wrap = el('div', { class: 'chart-wrap' }, el('canvas', { id: cid }));
+
+    if (part === 'referrer') {
+      // 流入元はサイトを見に行きたいので、開けるリンクも並べる
+      const total = values.reduce((a, v) => a + v, 0);
+      cell.replaceChildren(wrap,
+        el('ul', { class: 'ref-links' }, ...labels.map((host, i) => {
+          const share = total ? ((values[i] / total) * 100).toFixed(1) : '0.0';
+          const sw = el('i');
+          sw.style.background = ch.color(i);
+          return el('li', {}, sw,
+            el('span', { class: 'nm trunc' },
+              host === 'その他' ? host : hostLink(host)),
+            el('span', { class: 'vl', text: `${share}%` }));
+        })));
+    } else {
+      cell.replaceChildren(wrap);
+    }
     ch.pie(cid, labels, values);
     return;
   }
 
+  // dash_dimension は成果件数の多い順に返してくる。
+  // ここは売上を出しているので、売上の大きい順に並べ直す。
+  const bySales = (rows) => rows.slice()
+    .sort((a, b) => Number(b.sales || 0) - Number(a.sales || 0))
+    .slice(0, TOP_ROWS);
+
   if (part === 'top') {
-    cell.replaceChildren(miniTable(LIST_LABEL[other], data.others.slice(0, TOP_ROWS), yen, other));
+    cell.replaceChildren(miniTable(LIST_LABEL[other], bySales(data.others), yen, other));
     return;
   }
 
   if (part === 'products') {
-    cell.replaceChildren(miniTable('商品', data.products.slice(0, TOP_ROWS), yen));
+    cell.replaceChildren(miniTable('商品', bySales(data.products), yen));
     return;
   }
 
@@ -1556,22 +1591,7 @@ function drawEntityPart(kind, id, part, cell, data) {
 //   1秒ほど置く   … 直近3カ月をその場に小さく出す。外すと消える
 // になるようにする。行の中に貼るので、button でひとつずつ包む。
 
-const ENT_LABEL = { advertiser: '広告主', affiliate: 'アフィリエイター' };
 const HOVER_DELAY = 900;     // これくらい置いたら出す（動かしただけでは出さない）
-
-function nameNode(kind, label) {
-  const text = label === null || label === undefined ? '' : String(label);
-  // 「(なし)」や空はページが無いので、ただの文字にしておく
-  if (!ENT_LABEL[kind] || !text || text === '(なし)') return text;
-  return el('button', {
-    type: 'button',
-    class: 'ent-link',
-    'data-kind': kind,
-    'data-name': text,
-    title: `クリックで${ENT_LABEL[kind]}のページへ／少し置くと直近3カ月`,
-    text,
-  });
-}
 
 // その相手のページへ移る。絞り込みもその相手だけにする。
 function gotoEntity(kind, name) {
@@ -1938,7 +1958,7 @@ async function loadRankBreakdown(dimKey, id, host, metric) {
         bar.style.width = `${total ? (v / total) * 100 : 0}%`;
         return el('li', {},
           el('span', { class: 'no', text: `${i + 1}` }),
-          el('span', { class: 'nm trunc', text: x.label, title: x.label }),
+          el('span', { class: 'nm trunc', title: x.label }, nameNode(other, x.label)),
           el('span', { class: 'bar' }, bar),
           el('span', { class: 'vl', text: `${metric.money ? yen(v) : num(v)}（${share}%）` }));
       })));
@@ -2150,8 +2170,12 @@ function versusPane(index, pane, candidates, v, metric, draws) {
         onclick: () => { pane.dim = val; pane.picked = []; render(); },
       })));
 
+  // 1件だけ選んでいるときは、その名前を押してその相手のページへ行けるようにする
+  const title = pane.picked.length === 1
+    ? nameNode(pane.dim, pane.picked[0])
+    : pickedLabel(pane);
   const head = el('header', { class: 'eb-head' },
-    el('h3', {}, el('span', { class: 'vs-tag', text: label }), pickedLabel(pane)),
+    el('h3', {}, el('span', { class: 'vs-tag', text: label }), title),
     dimSeg,
     versusPicker(pane, candidates));
 
@@ -2350,7 +2374,8 @@ async function renderDetail() {
     { key: 'pay_status', label: '支払い', type: 'text' },
     { key: 'device', label: 'デバイス', type: 'text' },
     { key: 'os', label: 'OS', type: 'text' },
-    { key: 'first_referrer', label: '初回リファラ', type: 'text' },
+    { key: 'first_referrer', label: '初回リファラ', type: 'text', cellClass: 'trunc',
+      render: (r) => hostLink(r.first_referrer) },
     { key: 'order_id', label: '注文ID', type: 'text' },
   ];
   const cols = $('#detail-allcols').checked ? [...core, ...extra] : core;

@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081416';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081424';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';

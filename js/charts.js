@@ -1,7 +1,7 @@
 // Chart.js の薄いラッパ。同じ canvas に描き直すときは古いインスタンスを破棄する。
 
-import { compact, num, yen } from './util.js?v=202609081416';
-import { palette, isDark } from './settings.js?v=202609081416';
+import { compact, num, yen } from './util.js?v=202609081424';
+import { palette, isDark } from './settings.js?v=202609081424';
 
 const registry = new Map();
 
@@ -377,10 +377,49 @@ function horizontalAxes({ money = false } = {}) {
 
 // ---- 円 / ドーナツ ------------------------------------------------------
 
+// 円グラフの各切れ端に割合を書く。
+// 外部プラグインを足さずに済ませたいので、描き終わりに自分で書き込む。
+// 小さすぎる切れ端は字が入らないので飛ばす（重なって読めなくなる）。
+const PIE_MIN_LABEL = 4;   // これ未満（%）は書かない
+
+const pieLabelPlugin = {
+  id: 'afdPieLabels',
+  afterDatasetsDraw(chart) {
+    const meta = chart.getDatasetMeta(0);
+    if (!meta?.data?.length) return;
+    const values = chart.data.datasets[0].data.map((v) => Number(v || 0));
+    const total = values.reduce((a, b) => a + b, 0);
+    if (!total) return;
+
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = '600 11px -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+
+    meta.data.forEach((arc, i) => {
+      if (meta.data[i].hidden) return;
+      const share = (values[i] / total) * 100;
+      if (share < PIE_MIN_LABEL) return;
+      const { x, y } = arc.tooltipPosition();
+      const text = `${share < 10 ? share.toFixed(1) : Math.round(share)}%`;
+      // 塗りの色は濃淡がまちまちなので、白字に暗い縁を付けて必ず読めるようにする
+      ctx.strokeStyle = 'rgba(16,24,40,.65)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(text, x, y);
+    });
+    ctx.restore();
+  },
+};
+
 export function pie(canvasId, labels, data, opts = {}) {
   const total = data.reduce((a, b) => a + Number(b || 0), 0);
   return draw(canvasId, {
     type: 'doughnut',
+    plugins: [pieLabelPlugin],
     data: {
       labels,
       datasets: [{

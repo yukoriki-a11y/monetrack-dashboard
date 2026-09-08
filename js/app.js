@@ -1,11 +1,16 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080246';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080246';
-import * as ch from './charts.js?v=202609080246';
-import { renderTable, resetSort } from './table.js?v=202609080246';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080246';
-import { dayKind, holidayName } from './holiday.js?v=202609080246';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080902';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080902';
+import * as ch from './charts.js?v=202609080902';
+import { renderTable, resetSort } from './table.js?v=202609080902';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080902';
+import { dayKind, holidayName } from './holiday.js?v=202609080902';
+import * as cfg from './settings.js?v=202609080902';
+
+// 保存されている見た目の設定を、何より先に <html> へ当てる
+// （あとから当てると一瞬だけ既定の配色が見えてしまう）
+cfg.applyToDocument();
 
 // ---- 状態 --------------------------------------------------------------
 
@@ -26,18 +31,30 @@ const state = {
   dim: 'product',
   summaryRows: [],      // サマリーの日別行
   affiliates: [],       // アフィリエイター一覧のキャッシュ
-  compare: {            // 比較タブ
-    dim: 'affiliate',
+  compare: newPickState('affiliate', true),   // 広告主/アフィリエイター（内訳を塗り分け）
+  versus:  newPickState('affiliate', false),  // 比較（選んだ相手を1本ずつ重ねる）
+  list: {               // 広告主タブ / アフィリエイタータブ
+    advertiser: { search: '', rows: [] },
+    affiliate:  { search: '', rows: [] },
+  },
+  rank: { dim: 'affiliate', metric: 'sales', rows: [] },
+  detail: { page: 0, size: 100, search: '', rows: [], total: 0 },
+};
+
+// 「相手を選んで時系列で見る」画面（広告主/アフィリエイター・比較）の共通の持ち物
+function newPickState(dim, filled) {
+  return {
+    dim,
     metric: 'conversions',
     grain: 'day',
+    filled,
     // null = まだ選んでいない（上位を自動選択する） / [] = 明示的に空にした
     picked: { affiliate: null, advertiser: null },
     candidates: [],
+    query: '',
     rows: [],
-    totals: [],
-  },
-  detail: { page: 0, size: 100, search: '', rows: [], total: 0 },
-};
+  };
+}
 
 // いま読み込まれている版。index.html の ?v=... がそのまま入る（bump.ps1 が更新する）。
 // 「直したのに変わらない」ときにキャッシュかどうかを目で確認できるようにしている。
@@ -170,22 +187,23 @@ async function startApp(user) {
   buildMonthOptions();
   wireFilters();
   wireViewControls();
+  wireSettings();
   initImporter({ onImported: async () => { await loadMeta(); await render(); } });
 
   await loadMeta();
 
-  // 最初のページ（サマリー）の初期条件。データがあれば全期間で始める。
+  // 最初のページ（サマリー）の初期条件は全期間。
+  // データがまだ無いときは applyPreset 側で直近30日に落ちる。
   state.filters.summary = state.filter;
-  const initial = state.meta?.cv_date_min || state.meta?.ck_date_min ? 'all' : '7';
-  $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === initial));
-  applyPreset(initial);
+  $$('#presets .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.preset === 'all'));
+  applyPreset('all');
   await render();
 }
 
 function wireTabs() {
   $('#tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab');
-    if (!btn) return;
+    if (!btn || !btn.dataset.view) return;   // 設定ボタンもナビの中にいる
     if (btn.dataset.view === state.view) return;
 
     // 出ていくページの条件を確定させてから切り替える
@@ -197,8 +215,9 @@ function wireTabs() {
 function switchView(view) {
   state.view = view;
   state.filter = filterFor(view);
+  ch.hideTooltip();     // 出しっぱなしの内訳ツールチップを畳む
 
-  $$('.tab').forEach((t) => t.classList.toggle('is-active', t.dataset.view === view));
+  $$('.tab[data-view]').forEach((t) => t.classList.toggle('is-active', t.dataset.view === view));
   // hidden を外してから render する。Chart.js は非表示の器で初期化すると
   // 0x0 に固定され、あとから resize しても戻らないため順序が重要。
   $$('.view').forEach((v) => { v.hidden = v.dataset.view !== view; });
@@ -225,9 +244,17 @@ function filterFor(view) {
   return state.filters[view];
 }
 
+// 広告主の画面には人の絞り込みを出さない（逆も同じ）。
+// その画面の主役をドロップダウンで選び、もう一方は画面の中で割るため。
+const PICKER_OFF = { advertiser: 'affiliate', affiliate: 'advertiser' };
+
 // フィルタ帯の見た目を、いま見ているページの条件に合わせる
 function syncFilterUI() {
   const f = state.filter;
+  const off = PICKER_OFF[state.view];
+  $('#f-advertiser-dd').hidden = off === 'advertiser';
+  $('#f-affiliate-dd').hidden = off === 'affiliate';
+
   $('#f-from').value = f.from || '';
   $('#f-to').value = f.to || '';
   $('#f-month').value = f.month || '';
@@ -324,41 +351,38 @@ function wireViewControls() {
     render();
   });
 
-  // 比較タブ
-  $('#cmp-dim').addEventListener('click', (e) => {
+  // 「相手を選んで時系列で見る」2つの画面は操作が同じなので、まとめて配線する
+  wirePickView('cmp', state.compare);
+  wirePickView('vs', state.versus);
+
+  // ランキング
+  $('#rank-dim').addEventListener('click', (e) => {
     const btn = e.target.closest('.chip');
     if (!btn) return;
-    $$('#cmp-dim .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
-    state.compare.dim = btn.dataset.cmpdim;
-    $('#cmp-search').value = '';
-    resetSort($('#t-compare'));
+    $$('#rank-dim .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
+    state.rank.dim = btn.dataset.rankdim;
+    resetSort($('#t-rank'));
     render();
   });
-  $('#cmp-metric').addEventListener('click', (e) => {
+  $('#rank-metric').addEventListener('click', (e) => {
     const btn = e.target.closest('.chip');
     if (!btn) return;
-    $$('#cmp-metric .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
-    state.compare.metric = btn.dataset.cmpmetric;
-    render();
-  });
-  $('#cmp-grain').addEventListener('click', (e) => {
-    const btn = e.target.closest('.chip');
-    if (!btn) return;
-    $$('#cmp-grain .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
-    state.compare.grain = btn.dataset.cmpgrain;
-    render();
-  });
-  $('#cmp-search').addEventListener('input', debounce(() => renderCompareList(), 200));
-  $('#cmp-top5').addEventListener('click', () => {
-    const c = state.compare;
-    c.picked[c.dim] = c.candidates.slice(0, 5).map((r) => r.label);
-    render();
-  });
-  $('#cmp-clear').addEventListener('click', () => {
-    state.compare.picked[state.compare.dim] = [];
+    $$('#rank-metric .chip').forEach((x) => x.classList.toggle('is-active', x === btn));
+    state.rank.metric = btn.dataset.rankmetric;
+    resetSort($('#t-rank'));
     render();
   });
 
+  // 広告主タブ / アフィリエイタータブの絞り込み
+  for (const kind of ['advertiser', 'affiliate']) {
+    const input = $(`#${kind}-search`);
+    const run = () => {
+      state.list[kind].search = input.value.trim();
+      render();
+    };
+    input.addEventListener('input', debounce(run, 300));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+  }
 
   $('#detail-go').addEventListener('click', () => {
     state.detail.search = $('#detail-search').value.trim();
@@ -384,6 +408,99 @@ function wireViewControls() {
     const btn = e.target.closest('[data-export]');
     if (btn) exportCsv(btn.dataset.export);
   });
+}
+
+// 「広告主/アフィリエイター」と「比較」は操作系がまったく同じなので共通化する。
+// prefix は HTML 側の id と data 属性の頭（'cmp' か 'vs'）。
+function wirePickView(prefix, st) {
+  const seg = (name, set) => {
+    const box = $(`#${prefix}-${name}`);
+    if (!box) return;
+    box.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip');
+      if (!btn) return;
+      $$(`#${prefix}-${name} .chip`).forEach((x) => x.classList.toggle('is-active', x === btn));
+      set(btn.dataset[prefix + name]);
+      render();
+    });
+  };
+  seg('dim', (v) => { st.dim = v; st.query = ''; $(`#${prefix}-search`).value = ''; });
+  seg('metric', (v) => { st.metric = v; });
+  seg('grain', (v) => { st.grain = v; });
+
+  $(`#${prefix}-fill`).addEventListener('change', (e) => {
+    st.filled = e.target.checked;
+    render();
+  });
+
+  const search = $(`#${prefix}-search`);
+  const runSearch = () => { st.query = search.value.trim(); renderPickList(prefix, st); };
+  search.addEventListener('input', debounce(runSearch, 200));
+  search.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
+  $(`#${prefix}-search-go`).addEventListener('click', runSearch);
+
+  // 全員選択は「いま一覧に出ているぶん」。検索で絞ってから押せる。
+  $(`#${prefix}-all`).addEventListener('click', () => {
+    st.picked[st.dim] = visibleCandidates(st).map((r) => r.label);
+    render();
+  });
+  $(`#${prefix}-top5`).addEventListener('click', () => {
+    st.picked[st.dim] = st.candidates.slice(0, 5).map((r) => r.label);
+    render();
+  });
+  $(`#${prefix}-clear`).addEventListener('click', () => {
+    st.picked[st.dim] = [];
+    render();
+  });
+}
+
+// ---- 設定 --------------------------------------------------------------
+
+function wireSettings() {
+  const dlg = $('#settings');
+  const themeSel = $('#set-theme');
+  const paletteSel = $('#set-palette');
+  const statusChk = $('#set-status-color');
+  const densitySel = $('#set-density');
+
+  paletteSel.replaceChildren(...Object.entries(cfg.PALETTES)
+    .map(([value, p]) => el('option', { value, text: p.label })));
+
+  const showPreview = () => {
+    $('#palette-preview').replaceChildren(
+      ...(cfg.PALETTES[paletteSel.value] || cfg.PALETTES.standard).colors
+        .map((c) => {
+          const sw = el('i');
+          sw.style.background = c;
+          return sw;
+        }));
+  };
+
+  const sync = () => {
+    const s = cfg.settings();
+    themeSel.value = s.theme;
+    paletteSel.value = s.palette;
+    statusChk.checked = s.statusColor;
+    densitySel.value = s.density;
+    showPreview();
+  };
+
+  // 配色を変えると Chart.js が持っている色は古いままなので、作り直す
+  const applyAndRedraw = (patch) => {
+    cfg.update(patch);
+    sync();
+    ch.destroyAll();
+    render();
+  };
+
+  themeSel.addEventListener('change', () => applyAndRedraw({ theme: themeSel.value }));
+  paletteSel.addEventListener('change', () => applyAndRedraw({ palette: paletteSel.value }));
+  densitySel.addEventListener('change', () => applyAndRedraw({ density: densitySel.value }));
+  statusChk.addEventListener('change', () => cfg.update({ statusColor: statusChk.checked }));
+  $('#set-reset').addEventListener('click', () => { cfg.reset(); applyAndRedraw({}); });
+
+  $('#open-settings').addEventListener('click', () => { sync(); dlg.showModal(); });
+  sync();
 }
 
 // ---- フィルタ ----------------------------------------------------------
@@ -413,6 +530,11 @@ async function loadMeta() {
   updatePickerLabel('affiliate');
 }
 
+// ステータスの色分け。承認=緑 / 保留=黄 / 却下=赤。
+// 実際の色は CSS 側（設定でオフにもできる）。
+export const STATUS_CLASS = (s) =>
+  (s === '承認' ? 'st-ok' : s === '却下' ? 'st-ng' : s === '保留' ? 'st-hold' : 'st-other');
+
 // ステータスのチェックボックス。いま見ているページの条件を反映する。
 // 何も選んでいない状態（初期）は「全部オン」として扱う。
 function buildStatusBoxes() {
@@ -424,17 +546,22 @@ function buildStatusBoxes() {
     const cb = el('input', { type: 'checkbox', value: s });
     cb.checked = picked.size ? picked.has(s) : true;
     cb.addEventListener('change', () => { readFilterInputs(); render(); });
-    box.append(el('label', { class: 'inline check' }, cb, s));
+    box.append(el('label', { class: `inline check status ${STATUS_CLASS(s)}` },
+      cb, el('i', { class: 'dot' }), s));
   }
   if (!statuses.length) box.append(el('span', { class: 'muted small', text: 'データ未取込' }));
 }
 
 function readFilterInputs() {
+  const off = PICKER_OFF[state.view];
   state.filter.from = $('#f-from').value || state.filter.from;
   state.filter.to = $('#f-to').value || state.filter.to;
   state.filter.statuses = $$('#f-status input:checked').map((c) => c.value);
-  state.filter.advertisers = $$('#f-advertiser input[type=checkbox]:checked').map((c) => c.value);
-  state.filter.affiliates = $$('#f-affiliate input[type=checkbox]:checked').map((c) => c.value);
+  // 出していない側の絞り込みは、引き継いだ値が残っていても効かせない
+  state.filter.advertisers = off === 'advertiser' ? []
+    : $$('#f-advertiser input[type=checkbox]:checked').map((c) => c.value);
+  state.filter.affiliates = off === 'affiliate' ? []
+    : $$('#f-affiliate input[type=checkbox]:checked').map((c) => c.value);
 }
 
 // ---- 広告主 / アフィリエイターの選択（お気に入り付き） ------------------
@@ -445,6 +572,9 @@ const PICKERS = {
 };
 
 const LS_FAV = (kind) => `afd.fav.${kind}`;
+
+// ドロップダウン内の検索語。作り直しても消えないようにここに置く。
+const pickerQuery = { advertiser: '', affiliate: '' };
 
 function favorites(kind) {
   try {
@@ -486,8 +616,13 @@ function buildPicker(kind, items) {
     updatePickerLabel(kind);
     render();
   };
+  // 検索中は、見えている行だけを「すべて / 解除」の対象にする
+  // （絞り込んだつもりで隠れているものまで動くと分からなくなるため）
+  const visibleBoxes = () =>
+    $$(`${p.box} .pick`).filter((row) => !row.hidden)
+      .map((row) => row.querySelector('input[type=checkbox]'));
   const setAll = (on) => {
-    $$(`${p.box} input[type=checkbox]`).forEach((c) => { c.checked = on; });
+    visibleBoxes().forEach((c) => { c.checked = on; });
     apply();
   };
   const setFavOnly = () => {
@@ -496,10 +631,32 @@ function buildPicker(kind, items) {
     apply();
   };
 
+  // 検索欄。件数が多いので絞れないと選べない。
+  // 星の付け外しで作り直すため、打ちかけの語は覚えておく。
+  const search = el('input', {
+    type: 'search',
+    class: 'menu-search',
+    placeholder: `${p.label}を検索`,
+    value: pickerQuery[kind] || '',
+  });
+  const runSearch = () => {
+    pickerQuery[kind] = search.value;
+    const q = search.value.trim().toLowerCase();
+    for (const row of $$(`${p.box} .pick`)) {
+      row.hidden = Boolean(q) && !row.dataset.name.includes(q);
+    }
+  };
+  search.addEventListener('input', runSearch);
+  // details の中なので、Enter でフォーム送信や閉じる動作に流れないようにする
+  search.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+
   box.append(el('div', { class: 'menu-tools' },
-    el('button', { type: 'button', class: 'chip', text: 'すべて', onclick: () => setAll(true) }),
-    el('button', { type: 'button', class: 'chip', text: '解除', onclick: () => setAll(false) }),
-    el('button', { type: 'button', class: 'chip', text: '★だけ', title: 'お気に入りに付けたものだけで絞る', onclick: setFavOnly }),
+    search,
+    el('div', { class: 'seg' },
+      el('button', { type: 'button', class: 'chip', text: 'すべて', onclick: () => setAll(true) }),
+      el('button', { type: 'button', class: 'chip', text: '解除', onclick: () => setAll(false) }),
+      el('button', { type: 'button', class: 'chip', text: '★だけ', title: 'お気に入りに付けたものだけで絞る', onclick: setFavOnly }),
+    ),
   ));
 
   for (const name of sortByFavorite(items, fav)) {
@@ -521,8 +678,10 @@ function buildPicker(kind, items) {
       buildPicker(kind, items);
     });
 
-    box.append(el('label', { class: 'pick' }, cb, el('span', { class: 'name', text: name }), star));
+    box.append(el('label', { class: 'pick', 'data-name': String(name).toLowerCase() },
+      cb, el('span', { class: 'name', text: name }), star));
   }
+  runSearch();          // 打ちかけの検索語があれば、作り直した直後にも効かせる
   updatePickerLabel(kind);
 }
 
@@ -597,9 +756,13 @@ async function render() {
 
   busy(true);
   try {
-    if (state.view === 'summary')         await renderSummary();
-    else if (state.view === 'compare')    await renderCompare();
-    else if (state.view === 'detail')     await renderDetail();
+    if (state.view === 'summary')            await renderSummary();
+    else if (state.view === 'compare')       await renderPickView('cmp', state.compare);
+    else if (state.view === 'versus')        await renderPickView('vs', state.versus);
+    else if (state.view === 'advertiser')    await renderEntity('advertiser');
+    else if (state.view === 'affiliate')     await renderEntity('affiliate');
+    else if (state.view === 'rank')          await renderRank();
+    else if (state.view === 'detail')        await renderDetail();
   } catch (e) {
     toast(e.message);
     console.error(e);
@@ -622,37 +785,14 @@ function mtRate() {
 async function renderSummary() {
   const f = state.filter;
   const ts = await api.timeseries(f, 'day');
-  const rate = mtRate() / 100;
-
-  // 成果が無かった日も 0 として並べる（連日で見たいので歯抜けにしない）。
-  // 並びは古い → 新しい。つまり左から右へ行くほど今日に近づく。
-  const byDay = new Map(ts.map((r) => [String(r.bucket), r]));
-  const rows = [];
-  for (let d = new Date(f.from); ymd(d) <= f.to; d = addDays(d, 1)) {
-    const key = ymd(d);
-    const r = byDay.get(key);
-    const sales = Number(r?.sales || 0);
-    const reward = Number(r?.reward || 0);
-    const kind = dayKind(key, d.getDay());
-    rows.push({
-      bucket: key,
-      md: key.slice(5).replace('-', '/'),
-      wd: WEEKDAY[d.getDay()],
-      kind,                                   // 'sat' | 'sun' | 'holiday' | null
-      holiday: holidayName(key),
-      conversions: Number(r?.conversions || 0),
-      sales,
-      reward,
-      mt: Math.round(reward * rate),
-    });
-  }
+  const rows = dailyRows(ts, f.from, f.to);
   state.summaryRows = rows;
 
   const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
   $('#summary-total').textContent =
     `期間合計 売上 ${yen(sum('sales'))} / 報酬額 ${yen(sum('reward'))} / 想定 ${yen(sum('mt'))}`;
 
-  renderDailyMatrix(rows);
+  renderDailyMatrix($('#t-summary'), rows, $('#summary-matrix-wrap'));
 
   ch.line('c-summary-line', rows.map((r) => r.md), [
     { label: '売上', data: rows.map((r) => r.sales), fill: true },
@@ -661,9 +801,34 @@ async function renderSummary() {
 
 const WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'];
 
+// dash_timeseries の結果を、期間ぶんの「1日1行」に均す。
+// 成果が無かった日も 0 として並べる（連日で見たいので歯抜けにしない）。
+// 並びは古い → 新しい。つまり左から右へ行くほど今日に近づく。
+function dailyRows(ts, from, to) {
+  const rate = mtRate() / 100;
+  const byDay = new Map(ts.map((r) => [String(r.bucket), r]));
+  const rows = [];
+  for (let d = new Date(from); ymd(d) <= to; d = addDays(d, 1)) {
+    const key = ymd(d);
+    const r = byDay.get(key);
+    const reward = Number(r?.reward || 0);
+    rows.push({
+      bucket: key,
+      md: key.slice(5).replace('-', '/'),
+      wd: WEEKDAY[d.getDay()],
+      kind: dayKind(key, d.getDay()),         // 'sat' | 'sun' | 'holiday' | null
+      holiday: holidayName(key),
+      conversions: Number(r?.conversions || 0),
+      sales: Number(r?.sales || 0),
+      reward,
+      mt: Math.round(reward * rate),
+    });
+  }
+  return rows;
+}
+
 // 日付を「列」にした表を組む。指標名の列は CSS で左に固定してある。
-function renderDailyMatrix(rows) {
-  const table = $('#t-summary');
+function renderDailyMatrix(table, rows, wrap) {
   const last = rows.length - 1;
 
   if (!rows.length) {
@@ -700,23 +865,15 @@ function renderDailyMatrix(rows) {
   );
 
   // 直近の日付が見えている状態で開きたいので、右端まで寄せる
-  const wrap = $('#summary-matrix-wrap');
-  wrap.scrollLeft = wrap.scrollWidth;
+  if (wrap) wrap.scrollLeft = wrap.scrollWidth;
 }
 
-// アフィリエイター内訳などで使う小さな数値タイル
-function renderKpis(sel, items) {
-  const box = $(sel);
-  box.replaceChildren(...items.map((i) => el('div', { class: 'kpi' },
-    el('div', { class: 'k', text: i.k }),
-    el('div', { class: 'v', text: i.v }),
-    i.s ? el('div', { class: 's', text: i.s }) : null,
-  )));
-}
-
-// ---- 比較 --------------------------------------------------------------
-// 「この人はどのくらい動いているのか」「この広告主はどうか」を、
-// 選んだ相手ぶんの線を重ねて見る画面。
+// ---- 相手を選んで時系列で見る2画面 --------------------------------------
+//
+// 「広告主/アフィリエイター」(cmp) … 選んだ相手の合計を、もう一方の軸で塗り分ける
+// 「比較」(vs)                     … 選んだ相手を1本ずつの線にして直接くらべる
+//
+// 操作も取ってくるデータもほぼ同じなので、prefix で HTML を切り替えて共有する。
 
 const CMP_METRIC = {
   conversions: { label: '成果件数', type: 'num', money: false },
@@ -728,43 +885,56 @@ const CMP_METRIC = {
 
 // 積み上げる帯の本数。増やしすぎると色が見分けられなくなる。
 const CMP_BANDS = 8;
+// 「比較」で重ねる線の本数。選びすぎても上位だけ描く。
+const VS_LINES = 8;
 
-async function renderCompare() {
-  const c = state.compare;
-  const byAdvertiser = c.dim === 'advertiser';
+// 検索欄で絞ったあとの候補
+function visibleCandidates(st) {
+  const q = (st.query || '').toLowerCase();
+  return q ? st.candidates.filter((r) => String(r.label).toLowerCase().includes(q)) : st.candidates;
+}
+
+async function renderPickView(prefix, st) {
+  const byAdvertiser = st.dim === 'advertiser';
   const dimLabel = byAdvertiser ? '広告主' : 'アフィリエイター';
+  const breakdown = prefix === 'cmp';   // 内訳を塗り分ける画面かどうか
 
   // 選択候補（売上順）
-  c.candidates = await api.dimension(state.filter, c.dim, 300);
+  st.candidates = await api.dimension(state.filter, st.dim, 300);
 
   // 初回だけ上位を自動で選ぶ。自分で空にした場合はそのまま空にしておく。
-  if (c.picked[c.dim] === null) {
-    c.picked[c.dim] = c.candidates.slice(0, byAdvertiser ? 3 : 5).map((r) => r.label);
+  if (st.picked[st.dim] === null) {
+    st.picked[st.dim] = st.candidates.slice(0, byAdvertiser ? 3 : 5).map((r) => r.label);
   }
-  renderCompareList();
+  renderPickList(prefix, st);
 
-  const picked = c.picked[c.dim];
-  const metric = CMP_METRIC[c.metric];
+  const picked = st.picked[st.dim];
+  const metric = CMP_METRIC[st.metric];
 
-  // 面グラフは「合計の内訳」を見せるもの。塗り分けは常に“もう一方の軸”でやる。
-  //   広告主を選んだ    → 誰（アフィリエイター）が作っているかで塗る
+  // 内訳の画面では、塗り分けは常に“もう一方の軸”でやる。
+  //   広告主を選んだ           → 誰（アフィリエイター）が作っているかで塗る
   //   アフィリエイターを選んだ → どこ（広告主）で稼いだかで塗る
   const bandLabel = byAdvertiser ? 'アフィリエイター' : '広告主';
-  $('#cmp-title').textContent =
-    `選んだ${dimLabel}の${metric.label} — ${bandLabel}別の内訳`;
+  $(`#${prefix}-title`).textContent = breakdown
+    ? `選んだ${dimLabel}の${metric.label} — ${bandLabel}別の内訳`
+    : `${dimLabel}ごとの${metric.label}`;
 
+  const canvas = `c-${breakdown ? 'compare' : 'versus'}`;
   if (!picked.length) {
-    ch.line('c-compare', [], []);
-    c.rows = [];
+    ch.line(canvas, [], []);
+    st.rows = [];
     return;
   }
 
-  const rows = byAdvertiser
-    // 選んだ広告主に絞って、その中の上位アフィリエイターを系列にする
-    ? await api.compare(state.filter, 'affiliate', null, c.grain, CMP_BANDS, { advertisers: picked })
-    // 選んだアフィリエイターに絞って、その中の上位広告主を系列にする
-    : await api.compare(state.filter, 'advertiser', null, c.grain, CMP_BANDS, { affiliates: picked });
-  c.rows = rows;
+  const rows = breakdown
+    ? (byAdvertiser
+      // 選んだ広告主に絞って、その中の上位アフィリエイターを系列にする
+      ? await api.compare(state.filter, 'affiliate', null, st.grain, CMP_BANDS, { advertisers: picked })
+      // 選んだアフィリエイターに絞って、その中の上位広告主を系列にする
+      : await api.compare(state.filter, 'advertiser', null, st.grain, CMP_BANDS, { affiliates: picked }))
+    // 比較は選んだ相手そのものを系列にする
+    : await api.compare(state.filter, st.dim, picked.slice(0, VS_LINES), st.grain, VS_LINES);
+  st.rows = rows;
 
   // series × bucket の行を、系列ごとの配列に組み替える
   const buckets = [...new Set(rows.map((r) => String(r.bucket)))].sort();
@@ -777,38 +947,35 @@ async function renderCompare() {
   // 期間合計の大きい順に積む（下が大きい方）
   const order = [...bySeries.keys()].sort((a, b) => {
     const sum = (k) => [...bySeries.get(k).values()]
-      .reduce((acc, r) => acc + Number(r[c.metric] || 0), 0);
+      .reduce((acc, r) => acc + Number(r[st.metric] || 0), 0);
     return sum(b) - sum(a);
   });
-  c.order = order;
 
-  const labels = buckets.map((b) => (c.grain === 'month' ? b.slice(0, 7) : b.slice(5)));
+  const labels = buckets.map((b) => (st.grain === 'month' ? b.slice(0, 7) : b.slice(5)));
   const series = order.map((name, i) => ({
     label: name,
     color: ch.color(i),
     data: buckets.map((b) => {
       const r = bySeries.get(name).get(b);
-      if (!r) return c.metric === 'cvr' ? null : 0;
-      return r[c.metric] === null ? null : Number(r[c.metric]);
+      if (!r) return st.metric === 'cvr' ? null : 0;
+      return r[st.metric] === null ? null : Number(r[st.metric]);
     }),
   }));
 
   // CVR は足し算にならないので積み上げない（線のまま重ねる）
-  if (c.metric === 'cvr') {
-    ch.line('c-compare', labels, series, {});
+  if (st.metric === 'cvr') {
+    ch.line(canvas, labels, series, { pieTooltip: false });
   } else {
-    ch.area('c-compare', labels, series, { money: metric.money });
+    ch.area(canvas, labels, series, { money: metric.money, filled: st.filled });
   }
 }
 
-function renderCompareList() {
-  const c = state.compare;
-  const q = ($('#cmp-search').value || '').toLowerCase();
-  const box = $('#cmp-list');
-  const current = c.picked[c.dim] ?? [];
+function renderPickList(prefix, st) {
+  const box = $(`#${prefix}-list`);
+  const current = st.picked[st.dim] ?? [];
   const picked = new Set(current);
+  const list = visibleCandidates(st);
 
-  const list = c.candidates.filter((r) => !q || String(r.label).toLowerCase().includes(q));
   box.replaceChildren();
   if (!list.length) {
     box.append(el('p', { class: 'muted small', text: '該当なし' }));
@@ -819,19 +986,340 @@ function renderCompareList() {
     const cb = el('input', { type: 'checkbox', value: r.label });
     cb.checked = picked.has(r.label);
     cb.addEventListener('change', () => {
-      const cur = new Set(c.picked[c.dim] ?? []);
+      const cur = new Set(st.picked[st.dim] ?? []);
       if (cb.checked) cur.add(r.label);
       else cur.delete(r.label);
-      c.picked[c.dim] = c.candidates.map((x) => x.label).filter((l) => cur.has(l));
+      st.picked[st.dim] = st.candidates.map((x) => x.label).filter((l) => cur.has(l));
       render();
     });
 
-    // 色は塗り分け側（もう一方の軸）に付くので、ここに見本は出さない
     box.append(el('label', {}, cb, r.label,
       el('span', { class: 'cmp-sub', text: '¥' + compact(r.sales) })));
   }
 }
 
+// ---- 広告主タブ / アフィリエイタータブ ----------------------------------
+//
+// 選んだ相手ぶんの「かたまり」を縦に並べて、スクロールして見ていく画面。
+// 1かたまりの中身（広告主なら）:
+//   ・アフィリエイター別 売上の円グラフ
+//   ・売上上位アフィリエイター / 上位商品
+//   ・売上の推移（線）
+//   ・日別の金額明細（日付を横に並べて横スクロール）
+// アフィリエイターの側は「アフィリエイター↔広告主」を入れ替えたうえで
+// 流入元の円グラフが1つ増える。
+//
+// 期間・ステータスは上のフィルタ帯に従う。相手の絞り込みも上のドロップダウンで、
+// この2画面では自分に関係ある側だけを出す（広告主の画面に人の絞り込みは出さない）。
+
+const LIST_LABEL = { advertiser: '広告主', affiliate: 'アフィリエイター' };
+
+// 相手の軸。広告主の画面では中身をアフィリエイターで割る（その逆も同じ）。
+const OTHER = { advertiser: 'affiliate', affiliate: 'advertiser' };
+
+// 表示する部品。ボタンで一時的に隠せる。
+const ENTITY_PARTS = {
+  advertiser: [
+    { key: 'pie',      label: 'アフィリエイター内訳' },
+    { key: 'top',      label: '上位' },
+    { key: 'line',     label: '売上の推移' },
+    { key: 'matrix',   label: '日別明細' },
+  ],
+  affiliate: [
+    { key: 'pie',      label: '広告主内訳' },
+    { key: 'top',      label: '上位' },
+    { key: 'line',     label: '売上の推移' },
+    { key: 'referrer', label: '流入元' },
+    { key: 'matrix',   label: '日別明細' },
+  ],
+};
+
+const PIE_SLICES = 10;   // 円グラフに出す数（残りは「その他」にまとめる）
+const TOP_ROWS = 8;      // 「上位」に出す行数
+const MAX_BLOCKS = 60;   // 一度に並べるかたまりの上限
+
+const LS_PARTS = (kind) => `afd.parts.${kind}`;
+
+function hiddenParts(kind) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_PARTS(kind)) || '[]');
+    return new Set(Array.isArray(raw) ? raw : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function togglePart(kind, key) {
+  const set = hiddenParts(kind);
+  if (set.has(key)) set.delete(key);
+  else set.add(key);
+  localStorage.setItem(LS_PARTS(kind), JSON.stringify([...set]));
+}
+
+// 「表示するもの」のボタン列
+function buildPartButtons(kind) {
+  const box = $(`#${kind}-parts`);
+  const off = hiddenParts(kind);
+  box.replaceChildren(...ENTITY_PARTS[kind].map((p) => el('button', {
+    type: 'button',
+    class: `chip${off.has(p.key) ? '' : ' is-active'}`,
+    text: p.label,
+    title: off.has(p.key) ? 'クリックで表示する' : 'クリックで隠す',
+    onclick: () => {
+      togglePart(kind, p.key);
+      buildPartButtons(kind);
+      renderEntity(kind);          // 隠す/出すで作り直す（Chart.js が 0x0 で固まるため）
+    },
+  })));
+}
+
+// 読み込み済みの中身。タブを行き来しても取り直さない。
+const entityCache = new Map();     // `${kind}|${id}|条件` → payload
+const entityLoading = new Set();
+let entityToken = 0;               // 条件が変わったら古い読み込みを捨てるための世代番号
+
+function entityCacheKey(kind, id) {
+  const f = state.filter;
+  return [kind, id, f.from, f.to, (f.statuses || []).join(','), mtRate()].join('|');
+}
+
+async function renderEntity(kind) {
+  const f = state.filter;
+  const st = state.list[kind];
+  const token = ++entityToken;
+
+  buildPartButtons(kind);
+
+  // 一覧（売上順）。上のドロップダウンで絞られていれば、その相手だけが返る。
+  const all = await api.dimension(f, kind, 500);
+  if (token !== entityToken) return;
+
+  const q = st.search.trim().toLowerCase();
+  const rows = q ? all.filter((r) => String(r.label).toLowerCase().includes(q)) : all;
+  st.rows = rows.map((r) => ({
+    ...r,
+    cvr: Number(r.clicks) > 0 ? (Number(r.conversions) / Number(r.clicks)) * 100 : null,
+  }));
+
+  const shown = rows.slice(0, MAX_BLOCKS);
+  const totalSales = rows.reduce((a, r) => a + Number(r.sales || 0), 0);
+  $(`#${kind}-count`).textContent = rows.length > shown.length
+    ? `${num(rows.length)} 件中 上位 ${num(shown.length)} 件 / 売上 ${yen(totalSales)}`
+    : `${num(rows.length)} 件 / 売上 ${yen(totalSales)}`;
+
+  const box = $(`#${kind}-blocks`);
+  box.replaceChildren();
+
+  if (!shown.length) {
+    box.append(el('p', { class: 'empty', text: '該当するデータがありません' }));
+    return;
+  }
+
+  const off = hiddenParts(kind);
+  const parts = ENTITY_PARTS[kind].filter((p) => !off.has(p.key));
+  for (const row of shown) box.append(entityShell(kind, row, parts));
+
+  fillVisibleBlocks(kind, box, parts, token);
+}
+
+// 見えているぶん（と、その少し先）だけ中身を取りに行く。
+// かたまり1つにつき数本の問い合わせが要るので、まとめて投げない。
+//
+// IntersectionObserver は「描画されていない状態」だと発火しないことがあり、
+// 画面が出ているのに永遠に「読み込み中」で止まることがある。
+// 位置を自分で測るほうが確実なので、スクロールに合わせて都度判定する。
+const BLOCK_LOOKAHEAD = 400;   // 画面外どれだけ先まで先読みするか（px）
+
+function fillVisibleBlocks(kind, box, parts, token) {
+  const run = () => {
+    if (token !== entityToken || !box.isConnected) return;
+    const br = box.getBoundingClientRect();
+    let filled = 0;
+    for (const node of box.children) {
+      if (node.dataset.filled) continue;
+      const r = node.getBoundingClientRect();
+      const offscreen = r.bottom < br.top - BLOCK_LOOKAHEAD || r.top > br.bottom + BLOCK_LOOKAHEAD;
+      // 高さが取れない（= まだ描画されていない）ときは、先頭だけでも出す
+      if (offscreen && !(br.height === 0 && filled < 3)) continue;
+      node.dataset.filled = '1';
+      filled += 1;
+      fillEntityBlock(kind, node, parts, token);
+    }
+  };
+  box.onscroll = debounce(run, 80);
+  run();
+  // 折り返しやフォントの反映で高さが変わることがあるので、次のフレームでもう一度
+  requestAnimationFrame(run);
+}
+
+// かたまりの外枠だけ先に作る（中身は見えたときに入れる）
+function entityShell(kind, row, parts) {
+  const cvr = Number(row.clicks) > 0
+    ? (Number(row.conversions) / Number(row.clicks)) * 100 : null;
+
+  return el('section', { class: 'eblock', 'data-id': row.label },
+    el('header', { class: 'eb-head' },
+      el('h3', { text: row.label }),
+      el('span', { class: 'eb-stats' },
+        `売上 ${yen(row.sales)}`,
+        el('span', { class: 'sep', text: '/' }), `成果 ${num(row.conversions)}件`,
+        el('span', { class: 'sep', text: '/' }), `報酬 ${yen(row.reward)}`,
+        el('span', { class: 'sep', text: '/' }), `クリック ${num(row.clicks)}`,
+        el('span', { class: 'sep', text: '/' }), `CVR ${cvr === null ? '—' : pct(cvr)}`)),
+    el('div', { class: 'eb-grid' },
+      ...parts.map((p) => el('div', { class: `eb-cell${p.key === 'matrix' ? ' wide' : ''}`, 'data-part': p.key },
+        el('h4', { text: p.label }),
+        el('div', { class: 'eb-body', text: '読み込み中…' })))),
+  );
+}
+
+// 見えたかたまりの中身を作る
+async function fillEntityBlock(kind, node, parts, token) {
+  const id = node.dataset.id;
+  const key = entityCacheKey(kind, id);
+  if (entityLoading.has(key)) return;
+
+  let data = entityCache.get(key);
+  if (!data) {
+    entityLoading.add(key);
+    try {
+      data = await loadEntity(kind, id);
+      entityCache.set(key, data);
+    } catch (e) {
+      node.querySelectorAll('.eb-body').forEach((b) => {
+        b.replaceChildren(el('p', { class: 'muted small', text: '読み込めませんでした: ' + e.message }));
+      });
+      return;
+    } finally {
+      entityLoading.delete(key);
+    }
+  }
+  if (token !== entityToken || !node.isConnected) return;
+
+  for (const p of parts) {
+    const cell = node.querySelector(`.eb-cell[data-part="${p.key}"] .eb-body`);
+    if (cell) drawEntityPart(kind, id, p.key, cell, data);
+  }
+}
+
+async function loadEntity(kind, id) {
+  const f = state.filter;
+  const scope = kind === 'advertiser' ? { advertisers: [id] } : { affiliates: [id] };
+  const other = OTHER[kind];
+
+  // 相手ごとに数本ずつ問い合わせる。まとめて await して往復を減らす。
+  const jobs = [
+    api.dimension(f, other, 60, null, scope),
+    api.dimension(f, 'product', TOP_ROWS, null, scope),
+    api.timeseries(f, 'day', scope),
+  ];
+  if (kind === 'affiliate') jobs.push(api.dimension(f, 'referrer', PIE_SLICES + 5, null, scope));
+
+  const [others, products, ts, referrers] = await Promise.all(jobs);
+  return { others, products, ts, referrers: referrers || [], daily: dailyRows(ts, f.from, f.to) };
+}
+
+// 上位 N 件＋「その他」にまとめた円グラフ用のデータ
+function pieParts(rows, valueKey = 'sales') {
+  const sorted = rows.slice().sort((a, b) => Number(b[valueKey] || 0) - Number(a[valueKey] || 0));
+  const top = sorted.slice(0, PIE_SLICES);
+  const restSum = sorted.slice(PIE_SLICES).reduce((a, r) => a + Number(r[valueKey] || 0), 0);
+  const labels = top.map((r) => r.label);
+  const values = top.map((r) => Number(r[valueKey] || 0));
+  if (restSum > 0) { labels.push('その他'); values.push(restSum); }
+  return { labels, values };
+}
+
+function miniTable(head, rows, fmt) {
+  return el('table', { class: 'mini' },
+    el('thead', {}, el('tr', {},
+      el('th', { text: head }), el('th', { class: 'num', text: '売上' }))),
+    el('tbody', {}, ...(rows.length
+      ? rows.map((r) => el('tr', {},
+        el('td', { class: 'trunc', text: r.label, title: r.label }),
+        el('td', { class: 'num', text: fmt(r.sales) })))
+      : [el('tr', {}, el('td', { class: 'empty', colspan: 2, text: 'データなし' }))])));
+}
+
+function drawEntityPart(kind, id, part, cell, data) {
+  const other = OTHER[kind];
+  const safeId = String(id).replace(/[^\w-]/g, '_');
+
+  if (part === 'pie' || part === 'referrer') {
+    const src = part === 'pie' ? data.others : data.referrers;
+    const { labels, values } = pieParts(src);
+    if (!values.length) {
+      cell.replaceChildren(el('p', { class: 'muted small', text: 'データなし' }));
+      return;
+    }
+    const cid = `c-${kind}-${part}-${safeId}`;
+    cell.replaceChildren(el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })));
+    ch.pie(cid, labels, values);
+    return;
+  }
+
+  if (part === 'top') {
+    cell.replaceChildren(
+      miniTable(`上位${LIST_LABEL[other]}`, data.others.slice(0, TOP_ROWS), yen),
+      miniTable('上位商品', data.products.slice(0, TOP_ROWS), yen),
+    );
+    return;
+  }
+
+  if (part === 'line') {
+    const cid = `c-${kind}-line-${safeId}`;
+    cell.replaceChildren(el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })));
+    ch.line(cid, data.daily.map((r) => r.md), [
+      { label: '売上', data: data.daily.map((r) => r.sales), fill: true },
+    ], { money: true });
+    return;
+  }
+
+  if (part === 'matrix') {
+    const table = el('table', { class: 'matrix' });
+    const wrap = el('div', { class: 'matrix-wrap' }, table);
+    cell.replaceChildren(wrap);
+    renderDailyMatrix(table, data.daily, wrap);
+  }
+}
+
+// ---- ランキング ----------------------------------------------------------
+
+const RANK_DIM = {
+  affiliate:  'アフィリエイター',
+  advertiser: '広告主',
+  product:    '商品',
+  ad:         '広告',
+  referrer:   '流入元',
+};
+const RANK_TOP = 20;   // グラフに出す本数（表はもっと出す）
+
+async function renderRank() {
+  const r = state.rank;
+  const metric = CMP_METRIC[r.metric];
+  const rows = await api.dimension(state.filter, r.dim, 200);
+  r.rows = rows;
+
+  const sorted = rows.slice().sort((a, b) => Number(b[r.metric] || 0) - Number(a[r.metric] || 0));
+  const top = sorted.slice(0, RANK_TOP);
+
+  $('#rank-chart-title').textContent =
+    `${RANK_DIM[r.dim]} — ${metric.label} 上位${Math.min(RANK_TOP, top.length)}`;
+
+  renderTable($('#t-rank'), [
+    { key: 'rank', label: '順位', type: 'num', sortable: false },
+    { key: 'label', label: RANK_DIM[r.dim], type: 'text' },
+    { key: 'conversions', label: '成果件数', type: 'num' },
+    { key: 'sales', label: '売上', type: 'yen' },
+    { key: 'reward', label: '報酬額', type: 'yen' },
+    { key: 'clicks', label: 'クリック', type: 'num' },
+  ], sorted.map((row, i) => ({ ...row, rank: i + 1 })),
+  { sortKey: r.metric, sortDir: 'desc', empty: '該当するデータがありません' });
+
+  ch.bar('c-rank', top.map((x) => x.label), [
+    { label: metric.label, data: top.map((x) => Number(x[r.metric] || 0)) },
+  ], { horizontal: true, money: metric.money });
+}
 // ---- 成果明細 ----------------------------------------------------------
 
 async function renderDetail() {
@@ -881,12 +1369,25 @@ function exportCsv(kind) {
     downloadCsv(`日別売上_${stamp}.csv`,
       ['日付', '売上', 'アフィリエイター報酬額', `想定マネートラック報酬(${mtRate()}%)`, '成果件数'],
       (state.summaryRows || []).map((r) => [r.bucket, r.sales, r.reward, r.mt, r.conversions]));
-  } else if (kind === 'compare') {
+  } else if (kind === 'compare' || kind === 'versus') {
     // グラフに出ている内訳をそのまま（系列 × 期間）出す
-    downloadCsv(`比較_${stamp}.csv`,
-      ['アフィリエイター', '期間', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],
-      (state.compare.rows || []).map((r) =>
+    const st = kind === 'compare' ? state.compare : state.versus;
+    downloadCsv(`${kind === 'compare' ? '内訳' : '比較'}_${stamp}.csv`,
+      ['系列', '期間', 'クリック', '成果', 'CVR(%)', '売上', '報酬額'],
+      (st.rows || []).map((r) =>
         [r.series, r.bucket, r.clicks, r.conversions, r.cvr, r.sales, r.reward]));
+  } else if (kind === 'advertiser' || kind === 'affiliate') {
+    downloadCsv(`${LIST_LABEL[kind]}別_${stamp}.csv`,
+      [LIST_LABEL[kind], '成果件数', '売上', '報酬額', 'クリック', 'CVR(%)'],
+      (state.list[kind].rows || []).map((r) =>
+        [r.label, r.conversions, r.sales, r.reward, r.clicks, r.cvr]));
+  } else if (kind === 'rank') {
+    const r = state.rank;
+    const sorted = (r.rows || []).slice()
+      .sort((a, b) => Number(b[r.metric] || 0) - Number(a[r.metric] || 0));
+    downloadCsv(`ランキング_${RANK_DIM[r.dim]}_${CMP_METRIC[r.metric].label}_${stamp}.csv`,
+      ['順位', RANK_DIM[r.dim], '成果件数', '売上', '報酬額', 'クリック'],
+      sorted.map((x, i) => [i + 1, x.label, x.conversions, x.sales, x.reward, x.clicks]));
   } else if (kind === 'conversions') {
     downloadCsv(`成果明細_${stamp}.csv`,
       ['発生日時', 'ステータス', '広告主', 'アフィリエイター', '商品名', '広告名', 'キャンペーン',

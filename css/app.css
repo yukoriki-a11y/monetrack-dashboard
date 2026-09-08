@@ -25,6 +25,10 @@
   --accent-soft: #e9ecf0;
   --accent-ink: #ffffff;
   --bad: #c2413a;
+  /* ステータス専用の色。承認=緑 / 保留=黄 / 却下=赤。
+     設定でオフにできる（[data-status-color="off"]）。 */
+  --ok: #1f9254;
+  --warn: #b8860b;
   --radius: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, .07), 0 4px 12px -6px rgba(16, 24, 40, .12);
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, .06);
@@ -33,8 +37,14 @@
   color-scheme: light dark;
 }
 
+/* 暗い配色。
+   設定（js/settings.js）が <html data-theme> を立てるので、3段構えにする。
+     data-theme なし   … OS に合わせる（下のメディアクエリ）
+     data-theme=light  … OS が暗くても明るいまま
+     data-theme=dark   … OS が明るくても暗くする
+   中身は同じなので、まとめて :where() で当てる。 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0d1117;
     --panel: #181e26;
     --panel-2: #212a35;
@@ -49,10 +59,37 @@
     --accent-soft: #262f3b;
     --accent-ink: #0f1319;
     --bad: #f0736a;
+    --ok: #4ac47f;
+    --warn: #e6b23c;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 16px -8px rgba(0, 0, 0, .5);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
   }
 }
+:root[data-theme="dark"] {
+  --bg: #0d1117;
+  --panel: #181e26;
+  --panel-2: #212a35;
+  --panel-3: #2a3441;
+  --nav: #12181f;
+  --line: transparent;
+  --line-strong: transparent;
+  --ink: #e8edf3;
+  --ink-2: #a7b2c0;
+  --ink-3: #75808f;
+  --accent: #e8edf3;
+  --accent-soft: #262f3b;
+  --accent-ink: #0f1319;
+  --bad: #f0736a;
+  --ok: #4ac47f;
+  --warn: #e6b23c;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 16px -8px rgba(0, 0, 0, .5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+}
+
+/* 文字の大きさ（設定の「文字の大きさ」）。
+   ルートの font-size ではなく body に効かせて、rem を使っている箇所と衝突させない。 */
+:root[data-density="compact"] body { font-size: 12px; }
+:root[data-density="large"] body   { font-size: 14.5px; }
 
 * { box-sizing: border-box; }
 
@@ -179,7 +216,10 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow: hidden;
+  /* タブが増えたので、画面が低いときはナビだけ縦にスクロールさせる */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .brand {
@@ -262,6 +302,7 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
   gap: 10px;
   white-space: nowrap;
   overflow: hidden;
+  flex: none;                    /* 数が増えても潰さない */
 }
 .tab svg {
   width: 17px; height: 17px; flex: none;
@@ -286,6 +327,9 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
 }
 .sidebar-foot #who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-foot .btn.link { justify-self: start; }
+/* 設定ボタン。タブと同じ見た目にして、下端に置く */
+.settings-tab { margin: 0 -10px 6px; width: calc(100% + 20px); }
+#app.nav-collapsed .settings-tab { margin: 0 0 6px; width: 100%; }
 
 /* ---------- 右側 ---------- */
 .content {
@@ -315,6 +359,17 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
 
 label.inline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 label.inline.check { cursor: pointer; }
+
+/* ステータスの絞り込み。名前の前に色の点を置く（承認=緑 / 保留=黄 / 却下=赤） */
+label.inline.status { gap: 4px; }
+label.inline.status .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ink-3); flex: none;
+}
+label.inline.status.st-ok   .dot { background: var(--ok); }
+label.inline.status.st-hold .dot { background: var(--warn); }
+label.inline.status.st-ng   .dot { background: var(--bad); }
+:root[data-status-color="off"] label.inline.status .dot { display: none; }
 
 /* 広告主フィルタ（details でポップオーバー） */
 .dropdown { position: relative; }
@@ -354,18 +409,18 @@ label.inline.check { cursor: pointer; }
 .dropdown .menu.narrow { min-width: 200px; }
 /* 右端に近いドロップダウンは左に開く */
 
-/* 一括操作の並び。スクロールしても上に残す */
+/* 検索欄と一括操作。スクロールしても上に残す */
 .menu-tools {
   position: sticky;
   top: -8px;
   z-index: 1;
-  display: flex;
+  display: grid;
   gap: 5px;
-  flex-wrap: wrap;
   padding: 4px 2px 6px;
   margin: -8px -2px 2px;
   background: var(--panel);
 }
+.menu-search { width: 100%; min-width: 0; }
 .menu-empty { padding: 6px 4px; }
 
 /* 選択肢の1行。★でお気に入り、チェックで絞り込み対象 */
@@ -489,7 +544,10 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
   grid-template-columns: minmax(230px, .5fr) minmax(0, 1.5fr);
   grid-template-rows: minmax(0, 1fr);
 }
-.cmp-pick { grid-template-rows: auto auto minmax(0, 1fr); }
+/* 見出し / 検索と一括操作 / 一覧 の3段。
+   .card 側の2段指定があとに来るので、クラス2つぶんの重みで勝たせる
+   （負けると検索の行が 0px に潰れて見えなくなる）。 */
+.card.cmp-pick { grid-template-rows: auto auto minmax(0, 1fr); }
 .cmp-list {
   overflow: auto;
   min-height: 0;
@@ -513,6 +571,93 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 .cmp-list label:hover { background: var(--panel); }
 .cmp-list .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .cmp-list .cmp-sub { margin-left: auto; color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* =====================================================================
+   広告主 / アフィリエイター
+   選んだ相手ぶんの「かたまり」を縦に並べ、この中だけをスクロールさせる
+   ===================================================================== */
+.v-entity { grid-template-rows: minmax(0, 1fr); }
+
+.blocks {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  display: grid;
+  gap: var(--gap);
+  align-content: start;
+  padding-right: 2px;          /* スクロールバーと中身が重ならないように */
+  scrollbar-width: thin;
+}
+
+.eblock {
+  background: var(--panel-2);
+  border-radius: var(--radius);
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 8px;
+}
+.eb-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  /* 相手を追いながらスクロールできるよう、名前だけ上に残す */
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  margin: -10px -12px 0;
+  padding: 10px 12px 6px;
+  background: var(--panel-2);
+}
+.eb-head h3 { font-size: 14px; color: var(--ink); }
+.eb-stats { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.eb-stats .sep { color: var(--ink-3); margin: 0 6px; }
+
+.eb-grid {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+.eb-cell {
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 9px 11px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+/* 日別明細は日付を横に伸ばすので、常に幅いっぱいを使う */
+.eb-cell.wide { grid-column: 1 / -1; }
+.eb-cell h4 { margin: 0; font-size: 11px; font-weight: 650; color: var(--ink-3); }
+/* かたまりの中は縦スクロールの中にいるので、高さは固定で与える。
+   横に並ぶ3〜4枚の高さを揃え、中身が長いもの（上位◯◯）だけ中でスクロールさせる。 */
+.eb-cell:not(.wide) { height: 252px; }
+.eb-cell:not(.wide) .eb-body { overflow-y: auto; scrollbar-width: thin; }
+.eb-cell .chart-wrap { height: 100%; min-height: 190px; }
+.eb-cell.wide .matrix-wrap { max-width: 100%; }
+.eb-body { min-height: 0; min-width: 0; display: grid; gap: 8px; align-content: start; }
+
+/* 「上位◯◯」の小さな表 */
+table.mini { font-size: 11.5px; }
+table.mini thead th {
+  position: static;
+  background: none;
+  box-shadow: none;
+  padding: 2px 4px;
+  font-size: 10px;
+  cursor: default;
+}
+table.mini tbody td { padding: 2px 4px; }
+table.mini tbody tr:nth-child(odd) { background: var(--panel-2); }
+table.mini tbody tr:hover { background: var(--panel-3); }
+table.mini td.trunc { max-width: 150px; }
+
+/* ランキング: 左に表、右に横棒 */
+.v-rank {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
 
 /* 成果明細 / 取込 */
 .v-detail { grid-template-rows: minmax(0, 1fr); }
@@ -582,6 +727,47 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 /* 高さは grid から与えられる。position:relative + min-height:0 が要る */
 .chart-wrap { position: relative; min-height: 0; min-width: 0; height: 100%; }
 
+/* マウスを当てたときに出る内訳の円グラフ。
+   既定のツールチップ（行の羅列）の代わりに JS が組み立てる。
+   body 直下に置いて transform で動かすので、カードのはみ出しに影響されない。 */
+.chart-tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 120;
+  pointer-events: none;          /* 自分にマウスが乗ってちらつくのを防ぐ */
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(16, 24, 40, .3);
+  padding: 10px 12px;
+  max-width: 340px;
+}
+.chart-tip .tip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--ink-3);
+  padding-bottom: 7px;
+}
+.chart-tip .tip-head b { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.chart-tip .tip-body { display: flex; align-items: center; gap: 12px; }
+.chart-tip ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; min-width: 0; }
+.chart-tip li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.chart-tip li i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.chart-tip li b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+.chart-tip li span { margin-left: auto; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.chart-tip li.rest b { color: var(--ink-3); }
+
 /* ---------- テーブル ---------- */
 .table-wrap {
   overflow: auto;                /* 表だけは内部スクロール */
@@ -617,11 +803,15 @@ tbody tr.is-selected, tbody tr.is-selected:nth-child(odd) {
 }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* ステータスは色でも枠線でもなく、地の濃さの三段階で区別する */
+/* ステータス。既定は色で分ける（承認=緑 / 保留=黄 / 却下=赤）。
+   設定でオフにすると、地の濃さ三段階の無彩色に戻る。 */
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; white-space: nowrap; }
-.badge.ok   { background: var(--ink);    color: var(--panel); }
-.badge.hold { background: var(--ink-3);  color: var(--panel); }
-.badge.ng   { background: var(--panel-3); color: var(--ink-3); }
+.badge.ok   { background: var(--ok);   color: #fff; }
+.badge.hold { background: var(--warn); color: #fff; }
+.badge.ng   { background: var(--bad);  color: #fff; }
+:root[data-status-color="off"] .badge.ok   { background: var(--ink);     color: var(--panel); }
+:root[data-status-color="off"] .badge.hold { background: var(--ink-3);   color: var(--panel); }
+:root[data-status-color="off"] .badge.ng   { background: var(--panel-3); color: var(--ink-3); }
 .empty { padding: 22px; text-align: center; color: var(--ink-3); }
 
 .pager { display: flex; gap: 9px; align-items: center; justify-content: center; }
@@ -673,6 +863,9 @@ td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-sp
   font-size: 12.5px;
 }
 .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+/* 設定の色見本 */
+.swatches { display: flex; gap: 4px; margin-top: -4px; }
+.swatches i { width: 100%; height: 12px; border-radius: 3px; }
 
 /* ---------- toast / busy ---------- */
 .toast {

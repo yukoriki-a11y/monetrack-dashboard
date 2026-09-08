@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609080246">
+<link rel="stylesheet" href="css/app.css?v=202609080902">
 </head>
 <body>
 
@@ -66,24 +66,44 @@
       </button>
     </div>
 
-    <button class="tab is-active" data-view="summary">
+    <button class="tab is-active" data-view="summary" title="サマリー">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span>サマリー</span>
     </button>
-    <button class="tab" data-view="compare">
+    <button class="tab" data-view="compare" title="広告主/アフィリエイター">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l5-9 4 5 4-8 5 12"/><path d="M3 21h18"/></svg>
       <span>広告主/アフィリエイター</span>
     </button>
-    <button class="tab" data-view="detail">
+    <button class="tab" data-view="advertiser" title="広告主">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-6h6v6"/></svg>
+      <span>広告主</span>
+    </button>
+    <button class="tab" data-view="affiliate" title="アフィリエイター">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+      <span>アフィリエイター</span>
+    </button>
+    <button class="tab" data-view="versus" title="比較">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20V7"/></svg>
+      <span>比較</span>
+    </button>
+    <button class="tab" data-view="rank" title="ランキング">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11"/><path d="M4 12h7"/><path d="M4 17h15"/><path d="M19 4v6"/><path d="M16.5 6.5L19 4l2.5 2.5"/></svg>
+      <span>ランキング</span>
+    </button>
+    <button class="tab" data-view="detail" title="成果明細">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
       <span>成果明細</span>
     </button>
-    <button class="tab" data-view="import">
+    <button class="tab" data-view="import" title="データ取込">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3h16v-3"/></svg>
       <span>データ取込</span>
     </button>
 
     <div class="sidebar-foot">
+      <button id="open-settings" class="tab settings-tab" title="設定">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>
+        <span>設定</span>
+      </button>
       <span id="who" class="muted small"></span>
       <span id="build" class="muted small" title="読み込まれている版。更新したのに変わらないときはキャッシュを疑う"></span>
       <button id="logout" class="btn link">ログアウト</button>
@@ -95,20 +115,15 @@
 
     <!-- フィルタはページごとに別々の条件を持つ（タブを戻すとその条件に戻る） -->
     <div class="filterbar" id="filterbar">
-      <!-- 期間: 月を選ぶ / 過去1週間・全期間 / 開始日〜終了日 -->
+      <!-- 期間: 全期間 → 月を選ぶ → 開始日〜終了日 の順 -->
       <div class="fb-group">
-        <select id="f-month" aria-label="表示する年月"></select>
         <div class="seg" id="presets">
-          <button class="chip" data-preset="7">過去1週間</button>
           <button class="chip" data-preset="all">全期間</button>
         </div>
-      </div>
-
-      <div class="fb-group">
+        <select id="f-month" aria-label="表示する年月"></select>
         <input type="date" id="f-from" aria-label="開始日">
         <span class="dash">〜</span>
         <input type="date" id="f-to" aria-label="終了日">
-        <button id="f-apply" class="btn primary sm">反映</button>
       </div>
 
       <div class="fb-group" id="f-status"></div>
@@ -123,6 +138,7 @@
         <div class="menu" id="f-affiliate"></div>
       </details>
 
+      <button id="f-apply" class="btn primary sm">反映</button>
     </div>
 
     <main id="main">
@@ -151,19 +167,21 @@
           <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
         </div>
       </section>
-      <!-- 比較: 選んだアフィリエイター/広告主の動きを線グラフで重ねる -->
+
+      <!-- 広告主/アフィリエイター: 選んだ相手の内訳を、もう一方の軸で塗り分ける -->
       <section class="view v-compare" data-view="compare" hidden>
         <div class="card cmp-pick">
           <div class="card-head">
-            <h2>だれ / どこを見るか</h2>
             <div class="seg" id="cmp-dim">
               <button class="chip is-active" data-cmpdim="affiliate">アフィリエイター</button>
               <button class="chip" data-cmpdim="advertiser">広告主</button>
             </div>
           </div>
           <div class="row wrap">
-            <input id="cmp-search" type="search" placeholder="IDで絞り込み">
-            <button class="btn sm" id="cmp-top5">売上上位5件を選ぶ</button>
+            <input id="cmp-search" type="search" placeholder="IDで検索">
+            <button class="btn sm" id="cmp-search-go">検索</button>
+            <button class="btn sm" id="cmp-all">全員選択</button>
+            <button class="btn sm" id="cmp-top5">売上上位5件</button>
             <button class="btn link" id="cmp-clear">選択を外す</button>
           </div>
           <div class="cmp-list" id="cmp-list"></div>
@@ -173,6 +191,10 @@
           <div class="card-head">
             <h2 id="cmp-title">動きの比較</h2>
             <div class="row wrap">
+              <label class="inline check" title="面を塗りつぶすかどうか。外すと線だけになる">
+                <input type="checkbox" id="cmp-fill" checked>
+                塗りつぶし
+              </label>
               <button class="btn sm" data-export="compare">CSV</button>
               <div class="seg" id="cmp-metric">
                 <button class="chip is-active" data-cmpmetric="conversions">成果件数</button>
@@ -189,6 +211,116 @@
             </div>
           </div>
           <div class="chart-wrap"><canvas id="c-compare"></canvas></div>
+        </div>
+      </section>
+
+      <!-- 広告主: 選んだ広告主ぶんの「かたまり」を縦に並べてスクロールする -->
+      <section class="view v-entity" data-view="advertiser" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>広告主</h2>
+            <div class="row wrap">
+              <span class="muted small">表示するもの</span>
+              <div class="seg" id="advertiser-parts"></div>
+              <input id="advertiser-search" type="search" placeholder="広告主で検索">
+              <button class="btn sm" data-export="advertiser">CSV</button>
+              <span class="muted small" id="advertiser-count"></span>
+            </div>
+          </div>
+          <div class="blocks" id="advertiser-blocks"></div>
+        </div>
+      </section>
+
+      <!-- アフィリエイター: 選んだ人ぶんの「かたまり」を縦に並べてスクロールする -->
+      <section class="view v-entity" data-view="affiliate" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>アフィリエイター</h2>
+            <div class="row wrap">
+              <span class="muted small">表示するもの</span>
+              <div class="seg" id="affiliate-parts"></div>
+              <input id="affiliate-search" type="search" placeholder="アフィリエイターIDで検索">
+              <button class="btn sm" data-export="affiliate">CSV</button>
+              <span class="muted small" id="affiliate-count"></span>
+            </div>
+          </div>
+          <div class="blocks" id="affiliate-blocks"></div>
+        </div>
+      </section>
+
+      <!-- 比較: 選んだ相手を1本ずつの線で重ねる（内訳ではなく直接くらべる） -->
+      <section class="view v-compare" data-view="versus" hidden>
+        <div class="card cmp-pick">
+          <div class="card-head">
+            <div class="seg" id="vs-dim">
+              <button class="chip is-active" data-vsdim="affiliate">アフィリエイター</button>
+              <button class="chip" data-vsdim="advertiser">広告主</button>
+            </div>
+          </div>
+          <div class="row wrap">
+            <input id="vs-search" type="search" placeholder="IDで検索">
+            <button class="btn sm" id="vs-search-go">検索</button>
+            <button class="btn sm" id="vs-all">全員選択</button>
+            <button class="btn sm" id="vs-top5">売上上位5件</button>
+            <button class="btn link" id="vs-clear">選択を外す</button>
+          </div>
+          <div class="cmp-list" id="vs-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 id="vs-title">動きの比較</h2>
+            <div class="row wrap">
+              <label class="inline check" title="線の下を塗りつぶすかどうか">
+                <input type="checkbox" id="vs-fill">
+                塗りつぶし
+              </label>
+              <button class="btn sm" data-export="versus">CSV</button>
+              <div class="seg" id="vs-metric">
+                <button class="chip is-active" data-vsmetric="conversions">成果件数</button>
+                <button class="chip" data-vsmetric="sales">売上</button>
+                <button class="chip" data-vsmetric="reward">報酬額</button>
+                <button class="chip" data-vsmetric="clicks">クリック</button>
+                <button class="chip" data-vsmetric="cvr">CVR</button>
+              </div>
+              <div class="seg" id="vs-grain">
+                <button class="chip is-active" data-vsgrain="day">日</button>
+                <button class="chip" data-vsgrain="week">週</button>
+                <button class="chip" data-vsgrain="month">月</button>
+              </div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="c-versus"></canvas></div>
+        </div>
+      </section>
+
+      <!-- ランキング -->
+      <section class="view v-rank" data-view="rank" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>ランキング</h2>
+            <div class="row wrap">
+              <div class="seg" id="rank-dim">
+                <button class="chip is-active" data-rankdim="affiliate">アフィリエイター</button>
+                <button class="chip" data-rankdim="advertiser">広告主</button>
+                <button class="chip" data-rankdim="product">商品</button>
+                <button class="chip" data-rankdim="ad">広告</button>
+                <button class="chip" data-rankdim="referrer">流入元</button>
+              </div>
+              <div class="seg" id="rank-metric">
+                <button class="chip is-active" data-rankmetric="sales">売上</button>
+                <button class="chip" data-rankmetric="conversions">成果件数</button>
+                <button class="chip" data-rankmetric="reward">報酬額</button>
+                <button class="chip" data-rankmetric="clicks">クリック</button>
+              </div>
+              <button class="btn sm" data-export="rank">CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="t-rank"></table></div>
+        </div>
+        <div class="card">
+          <h2 id="rank-chart-title">上位</h2>
+          <div class="chart-wrap"><canvas id="c-rank"></canvas></div>
         </div>
       </section>
 
@@ -256,12 +388,53 @@
 
     </main>
   </div>
+
+  <!-- ============ 設定 ============ -->
+  <dialog id="settings" class="dialog">
+    <form method="dialog">
+      <h2>設定</h2>
+
+      <label>配色
+        <select id="set-theme">
+          <option value="auto">自動（OSの設定に合わせる）</option>
+          <option value="light">明るい</option>
+          <option value="dark">暗い</option>
+        </select>
+      </label>
+
+      <label>グラフの色
+        <select id="set-palette"></select>
+      </label>
+      <div class="swatches" id="palette-preview"></div>
+
+      <label class="inline check">
+        <input type="checkbox" id="set-status-color">
+        ステータスを色で分ける（承認=緑 / 保留=黄 / 却下=赤）
+      </label>
+
+      <label>文字の大きさ
+        <select id="set-density">
+          <option value="normal">標準</option>
+          <option value="compact">小さめ（一度に多く見る）</option>
+          <option value="large">大きめ</option>
+        </select>
+      </label>
+
+      <p class="muted small">設定はこのブラウザにだけ保存されます。</p>
+
+      <div class="dialog-foot">
+        <button type="button" class="btn" id="set-reset">初期値に戻す</button>
+        <button class="btn primary" value="close">閉じる</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
   <div id="busy" class="busy" hidden><div class="spinner"></div></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609080246"></script>
+<script type="module" src="js/app.js?v=202609080902"></script>
 </body>
 </html>

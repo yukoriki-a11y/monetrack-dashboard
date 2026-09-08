@@ -1,0 +1,37 @@
+
+      <!-- 急上昇: 直近と、その前の同じ日数をくらべて伸びた相手を出す -->
+      <section class="view v-rank" data-view="surge" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2 id="surge-title">急上昇</h2>
+            <div class="row wrap">
+              <div class="seg" id="surge-dim">
+                <button class="chip is-active" data-surgedim="affiliate">アフィリエイター</button>
+                <button class="chip" data-surgedim="advertiser">広告主</button>
+              </div>
+              <span class="muted small">くらべる幅</span>
+              <div class="seg" id="surge-window">
+                <button class="chip" data-surgewindow="3">3日</button>
+                <button class="chip is-active" data-surgewindow="7">7日</button>
+                <button class="chip" data-surgewindow="14">14日</button>
+                <button class="chip" data-surgewindow="30">30日</button>
+              </div>
+              <div class="seg" id="surge-order">
+                <button class="chip is-active" data-surgeorder="up">急上昇</button>
+                <button class="chip" data-surgeorder="down">急降下</button>
+              </div>
+              <div class="seg" id="surge-by">
+                <button class="chip is-active" data-surgeby="delta">増減額順</button>
+                <button class="chip" data-surgeby="rate">伸び率順</button>
+              </div>
+              <button class="btn sm" data-export="surge">CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="t-surge"></table></div>
+        </div>
+        <div class="card">
+          <h2 id="surge-chart-title">増減の大きい相手</h2>
+          <div class="chart-wrap"><canvas id="c-surge"></canvas></div>
+        </div>
+      </section>
+

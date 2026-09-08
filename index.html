@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609081407">
+<link rel="stylesheet" href="css/app.css?v=202609081416">
 </head>
 <body>
 
@@ -312,6 +312,10 @@
                 <button class="chip" data-vsgrain="month">月</button>
                 <button class="chip" data-vsgrain="year">年</button>
               </div>
+              <label class="inline check" title="線グラフのとき、内訳を面で塗り分ける">
+                <input type="checkbox" id="vs-fill" checked>
+                塗りつぶし
+              </label>
               <button class="btn sm" data-export="versus">CSV</button>
             </div>
           </div>
@@ -325,6 +329,11 @@
           <div class="card-head">
             <h2>ランキング</h2>
             <div class="row wrap">
+              <div class="seg" id="rank-mode">
+                <button class="chip is-active" data-rankmode="bars">棒グラフ</button>
+                <button class="chip" data-rankmode="table">表</button>
+                <button class="chip" data-rankmode="daily">日別</button>
+              </div>
               <span class="muted small">表示するもの</span>
               <div class="seg" id="rank-parts"></div>
               <span class="muted small">指標</span>
@@ -340,40 +349,23 @@
           <div class="rank-grid" id="rank-blocks"></div>
         </div>
       </section>
-
-      <!-- 急上昇: 直近と、その前の同じ日数をくらべて伸びた相手を出す -->
-      <section class="view v-rank" data-view="surge" hidden>
+      <!-- 急上昇: あとで作り込むので、いまは案内だけ。
+           作りかけの中身は wip/surge/ に取ってある。 -->
+      <section class="view v-wip" data-view="surge" hidden>
         <div class="card">
-          <div class="card-head">
-            <h2 id="surge-title">急上昇</h2>
-            <div class="row wrap">
-              <div class="seg" id="surge-dim">
-                <button class="chip is-active" data-surgedim="affiliate">アフィリエイター</button>
-                <button class="chip" data-surgedim="advertiser">広告主</button>
-              </div>
-              <span class="muted small">くらべる幅</span>
-              <div class="seg" id="surge-window">
-                <button class="chip" data-surgewindow="3">3日</button>
-                <button class="chip is-active" data-surgewindow="7">7日</button>
-                <button class="chip" data-surgewindow="14">14日</button>
-                <button class="chip" data-surgewindow="30">30日</button>
-              </div>
-              <div class="seg" id="surge-order">
-                <button class="chip is-active" data-surgeorder="up">急上昇</button>
-                <button class="chip" data-surgeorder="down">急降下</button>
-              </div>
-              <div class="seg" id="surge-by">
-                <button class="chip is-active" data-surgeby="delta">増減額順</button>
-                <button class="chip" data-surgeby="rate">伸び率順</button>
-              </div>
-              <button class="btn sm" data-export="surge">CSV</button>
+          <div class="wip-note">
+            <div class="wip-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
             </div>
+            <div class="wip-big">調整中</div>
+            <p class="wip-sub">
+              売上が伸びている広告主・アフィリエイターを見つける画面です。<br>
+              いまは準備中で、もう少し作り込んでから出します。
+            </p>
+            <p class="muted small">
+              当面は「ランキング」の日別で、前日とくらべた動き（⇈ ↑ → ↓ ⇊）が見られます。
+            </p>
           </div>
-          <div class="table-wrap"><table id="t-surge"></table></div>
-        </div>
-        <div class="card">
-          <h2 id="surge-chart-title">増減の大きい相手</h2>
-          <div class="chart-wrap"><canvas id="c-surge"></canvas></div>
         </div>
       </section>
 
@@ -485,6 +477,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609081407"></script>
+<script type="module" src="js/app.js?v=202609081416"></script>
 </body>
 </html>

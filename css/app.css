@@ -744,6 +744,29 @@ table.mini td.trunc { max-width: 150px; }
   isolation: isolate;
 }
 .rank-card .table-wrap { background: var(--panel); min-height: 0; }
+/* 棒グラフは枠の高さいっぱいに伸ばす */
+.rank-card .chart-wrap { height: 100%; min-height: 200px; }
+
+/* あとで作り込む画面の「調整中」表示 */
+.v-wip { grid-template-rows: minmax(0, 1fr); }
+.wip-note {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--ink-3);
+}
+.wip-note .wip-mark { color: color-mix(in srgb, var(--ink) 20%, transparent); }
+.wip-note .wip-mark svg {
+  width: 54px; height: 54px;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+}
+.wip-note .wip-big { font-size: 22px; font-weight: 650; color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.wip-note .wip-sub { margin: 0; font-size: 12.5px; line-height: 1.7; }
+.wip-note p { margin: 0; }
 .rank-card .eb-head { background: var(--panel-2); position: static; margin: 0; padding: 0; box-shadow: none; }
 .rank-card .eb-head h3 { font-size: 12.5px; }
 .rank-card .matrix-wrap { overflow: auto; min-height: 0; }
@@ -989,6 +1012,71 @@ thead th {
 }
 thead th.sorted-asc  .th-label::after { content: " ▲"; color: var(--ink); font-size: 8px; }
 thead th.sorted-desc .th-label::after { content: " ▼"; color: var(--ink); font-size: 8px; }
+
+/* ---------- 押せる名前（広告主・アフィリエイター） ---------- */
+/* 表の中に貼るので、見た目はただの文字のまま。下線で押せることを示す。 */
+.ent-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
+  text-underline-offset: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.ent-link:hover { text-decoration-style: solid; color: var(--ink); }
+
+/* マウスを少し置いたときに出る小さな要約 */
+.ent-card {
+  position: fixed;
+  z-index: 130;
+  pointer-events: none;          /* 自分にマウスが乗って消えないように */
+  width: 250px;
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(16, 24, 40, .3);
+  padding: 10px 12px;
+  display: grid;
+  gap: 7px;
+}
+.ent-card .ec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ent-card .ec-head b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ent-card .ec-period { margin: -4px 0 0; }
+.ent-card dl.ec-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 10px;
+  font-size: 11.5px;
+}
+.ent-card dl.ec-stats dt { color: var(--ink-3); }
+.ent-card dl.ec-stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.ent-card ul.ec-months { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.ent-card ul.ec-months li {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+}
+.ent-card ul.ec-months .mo { color: var(--ink-3); }
+.ent-card ul.ec-months .bar { background: var(--panel-3); border-radius: 3px; height: 7px; overflow: hidden; }
+.ent-card ul.ec-months .bar i { display: block; height: 100%; background: var(--ink-3); border-radius: 3px; }
+.ent-card ul.ec-months .vl { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.ent-card .ec-foot { border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); padding-top: 6px; }
 
 /* ---------- 表計算ソフト風の列フィルタ ---------- */
 /* 見出しの右端に小さな漏斗。絞り込み中は色を濃くして分かるようにする */

@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609081424';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081424';
-import * as ch from './charts.js?v=202609081424';
-import { renderTable, resetSort } from './table.js?v=202609081424';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081424';
-import { dayKind, holidayName } from './holiday.js?v=202609081424';
-import * as cfg from './settings.js?v=202609081424';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609081436';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081436';
+import * as ch from './charts.js?v=202609081436';
+import { renderTable, resetSort } from './table.js?v=202609081436';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081436';
+import { dayKind, holidayName } from './holiday.js?v=202609081436';
+import * as cfg from './settings.js?v=202609081436';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -293,11 +293,13 @@ function filterFor(view) {
 // ページごとに、フィルタ帯のどの絞り込みを出さないか。
 //   広告主の画面 … 主役は広告主なので、人の絞り込みは出さない（逆も同じ）
 //   広告主/アフィリエイター・比較 … 相手は画面の中で選ぶので、どちらも出さない
+//   ランキング … 全員を並べるのが目的なので、相手の絞り込みは出さない
 const PICKER_OFF = {
   advertiser: ['affiliate'],
   affiliate: ['advertiser'],
   compare: ['advertiser', 'affiliate'],
   versus: ['advertiser', 'affiliate'],
+  rank: ['advertiser', 'affiliate'],
 };
 const pickerOff = (view) => PICKER_OFF[view] || [];
 
@@ -1434,8 +1436,10 @@ async function loadEntity(kind, id) {
 
   // 相手ごとに数本ずつ問い合わせる。まとめて await して往復を減らす。
   const jobs = [
-    api.dimension(f, other, 60, null, scope),
-    api.dimension(f, 'product', TOP_ROWS, null, scope),
+    // 「上位◯◯」「上位商品」は売上を出しているので、売上順に上位を取る。
+    // ここを成果件数順で切ると、売上の大きいものが取りこぼれる。
+    api.dimension(f, other, 60, null, scope, 'sales'),
+    api.dimension(f, 'product', TOP_ROWS * 3, null, scope, 'sales'),
     api.timeseries(f, 'day', scope),
     // 売上の推移を「もう一方の軸」で塗り分けるための日別内訳
     api.compare(f, other, null, 'day', ENTITY_BANDS, scope),
@@ -1807,7 +1811,9 @@ async function renderRank() {
   }
 
   // まとめて取りに行く（1枚ずつ待つと画面が段々に出て落ち着かない）
-  const results = await Promise.all(parts.map((p) => api.dimension(f, p.key, RANK_ROWS, null)));
+  // 上位の切り出しも、いま見ている指標順にする（売上順で切って成果件数で並べると噛み合わない）
+  const results = await Promise.all(
+    parts.map((p) => api.dimension(f, p.key, RANK_ROWS, null, {}, metric.key)));
   r.data = {};
   parts.forEach((p, i) => { r.data[p.key] = results[i]; });
 
@@ -1938,7 +1944,7 @@ async function loadRankBreakdown(dimKey, id, host, metric) {
   try {
     let rows = rankBreakCache.get(ck);
     if (!rows) {
-      rows = await api.dimension(f, other, 12, null, scope);
+      rows = await api.dimension(f, other, 12, null, scope, metric.key);
       rankBreakCache.set(ck, rows);
     }
     if (!host.isConnected) return;
@@ -2145,7 +2151,7 @@ async function loadVersusPane(pane, v) {
   const other = OTHER[pane.dim];
   const [ts, breakdown, bands] = await Promise.all([
     api.timeseries(state.filter, 'day', scope),
-    api.dimension(state.filter, other, 60, null, scope),
+    api.dimension(state.filter, other, 60, null, scope, state.versus.metric),
     // 線グラフを内訳で塗り分けるための日別
     api.compare(state.filter, other, null, 'day', ENTITY_BANDS, scope),
   ]);

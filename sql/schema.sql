@@ -511,7 +511,10 @@ create or replace function public.dash_affiliates(
   limit greatest(p_limit, 1)
 $$;
 
--- 任意の軸で集計
+-- 軸ごとの集計。
+--   p_dim   : 集計する軸
+--   p_order : 上位を取るときの基準（sales / conversions / reward / clicks）
+--             画面に出している数字と揃えないと、上位の切り出しがずれる
 create or replace function public.dash_dimension(
   p_from date,
   p_to date,
@@ -520,7 +523,8 @@ create or replace function public.dash_dimension(
   p_dim text default 'product',
   p_limit integer default 50,
   p_affiliate text default null,
-  p_affiliates text[] default null
+  p_affiliates text[] default null,
+  p_order text default 'sales'
 ) returns table(
   label text, conversions bigint, sales numeric,
   reward numeric, qty numeric, clicks bigint
@@ -575,9 +579,17 @@ create or replace function public.dash_dimension(
     coalesce(cv.l, ck.l), coalesce(cv.n, 0), coalesce(cv.s, 0),
     coalesce(cv.r, 0), coalesce(cv.q, 0), coalesce(ck.n, 0)
   from cv full outer join ck on cv.l = ck.l
-  order by coalesce(cv.n, 0) desc, coalesce(ck.n, 0) desc
+  -- 指定された基準で上位を取る。使わない行は null になるので、指定したものだけが効く。
+  order by
+    (case when p_order = 'conversions' then coalesce(cv.n, 0) end) desc nulls last,
+    (case when p_order = 'reward'      then coalesce(cv.r, 0) end) desc nulls last,
+    (case when p_order = 'clicks'      then coalesce(ck.n, 0) end) desc nulls last,
+    (case when p_order not in ('conversions','reward','clicks')
+          then coalesce(cv.s, 0) end) desc nulls last,
+    coalesce(cv.n, 0) desc, coalesce(ck.n, 0) desc
   limit greatest(p_limit, 1)
 $$;
+
 
 -- 成果データの明細と、列フィルタの値候補
 -- 絞り込み指定（列名 → 値の配列）から、その列ぶんを取り出す。

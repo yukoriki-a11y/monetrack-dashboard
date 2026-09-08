@@ -6,10 +6,10 @@
 // 4. 500 行ずつに分けて RPC へ送る（行レベルでも重複は弾かれる）
 // 5. 取り込み履歴に記録
 
-import { $, el, num, fmtDateTime, chunk, nameNode } from './util.js?v=202609081424';
-import { api } from './db.js?v=202609081424';
-import { readFile, detectKind, parseConversions, parseClicks } from './parse.js?v=202609081424';
-import { renderTable } from './table.js?v=202609081424';
+import { $, el, num, fmtDateTime, chunk, nameNode } from './util.js?v=202609081436';
+import { api } from './db.js?v=202609081436';
+import { readFile, detectKind, parseConversions, parseClicks } from './parse.js?v=202609081436';
+import { renderTable } from './table.js?v=202609081436';
 
 const CHUNK = 500;
 

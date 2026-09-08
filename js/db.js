@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081424';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081436';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -124,8 +124,12 @@ export const api = {
   timeseries:(f, grain = 'day', scope = {}) =>
     rpc('dash_timeseries', { ...base(f, scope), p_grain: grain }),
   affiliates:(f, limit = 300)    => rpc('dash_affiliates', { ...base(f), p_limit: limit }),
-  dimension: (f, dim, limit = 50, affiliate = null, scope = {}) =>
-    rpc('dash_dimension', { ...base(f, scope), p_dim: dim, p_limit: limit, p_affiliate: affiliate }),
+  // order は「何順で上位を取るか」（sales / conversions / reward / clicks）。
+  // 画面に出す数字と揃えないと、上位の切り出しがずれる。
+  dimension: (f, dim, limit = 50, affiliate = null, scope = {}, order = 'sales') =>
+    rpc('dash_dimension', {
+      ...base(f, scope), p_dim: dim, p_limit: limit, p_affiliate: affiliate, p_order: order,
+    }),
   // 単体詳細はアフィリエイターを指定して呼ぶので、絞り込みの p_affiliates は渡さない
   affiliateDetail: (affiliateId, f) =>
     rpc('dash_affiliate_detail', {

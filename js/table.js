@@ -3,17 +3,22 @@
 // cols の各要素:
 //   { key, label, type: 'text'|'num'|'yen'|'pct'|'node', width, render(row) }
 
-import { el, num, yen, pct } from './util.js?v=202609081017';
+import { el, num, yen, pct } from './util.js?v=202609081037';
 
 const state = new WeakMap();
 
 export function renderTable(tableEl, cols, rows, opts = {}) {
   if (!tableEl) return;
 
-  const st = state.get(tableEl) || { sortKey: opts.sortKey ?? null, sortDir: opts.sortDir ?? 'desc' };
-  state.set(tableEl, st);
+  // externalSort を渡されたときは、並べ替えはサーバ側でやっている前提。
+  // ここでは並べ替えず、見出しの ▲▼ を合わせるだけにする。
+  const ext = opts.externalSort || null;
+  const st = ext
+    ? { sortKey: ext.key, sortDir: ext.dir }
+    : (state.get(tableEl) || { sortKey: opts.sortKey ?? null, sortDir: opts.sortDir ?? 'desc' });
+  if (!ext) state.set(tableEl, st);
 
-  const sorted = st.sortKey ? sortRows(rows, st.sortKey, st.sortDir, cols) : rows.slice();
+  const sorted = (!ext && st.sortKey) ? sortRows(rows, st.sortKey, st.sortDir, cols) : rows.slice();
 
   tableEl.replaceChildren();
 
@@ -25,16 +30,28 @@ export function renderTable(tableEl, cols, rows, opts = {}) {
       c.type === 'num' || c.type === 'yen' || c.type === 'pct' ? 'num' : '',
       st.sortKey === c.key ? (st.sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc') : '',
     ].filter(Boolean).join(' ');
-    const th = el('th', { class: cls || null, text: c.label, title: c.title || c.label });
+    const th = el('th', { class: cls || null, title: c.title || c.label },
+      el('span', { class: 'th-label', text: c.label }));
     if (c.width) th.style.width = c.width;
-    if (c.sortable !== false) {
+
+    // 見出しに付ける追加の操作（列フィルタのボタンなど）
+    const addon = opts.headerAddon?.(c, th);
+    if (addon) th.append(addon);
+
+    if (c.sortable === false) {
+      th.style.cursor = 'default';
+    } else if (ext) {
+      // 並べ替えはサーバ側。呼び出し側に任せる。
+      th.addEventListener('click', (e) => {
+        if (e.target.closest('.th-tool')) return;   // フィルタのボタンは別扱い
+        opts.onSort?.(c);
+      });
+    } else {
       th.addEventListener('click', () => {
         if (st.sortKey === c.key) st.sortDir = st.sortDir === 'asc' ? 'desc' : 'asc';
         else { st.sortKey = c.key; st.sortDir = c.type === 'text' ? 'asc' : 'desc'; }
         renderTable(tableEl, cols, rows, opts);
       });
-    } else {
-      th.style.cursor = 'default';
     }
     tr.append(th);
   }

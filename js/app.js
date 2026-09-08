@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081017';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081017';
-import * as ch from './charts.js?v=202609081017';
-import { renderTable, resetSort } from './table.js?v=202609081017';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081017';
-import { dayKind, holidayName } from './holiday.js?v=202609081017';
-import * as cfg from './settings.js?v=202609081017';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081037';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081037';
+import * as ch from './charts.js?v=202609081037';
+import { renderTable, resetSort } from './table.js?v=202609081037';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081037';
+import { dayKind, holidayName } from './holiday.js?v=202609081037';
+import * as cfg from './settings.js?v=202609081037';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -15,7 +15,7 @@ cfg.applyToDocument();
 // ---- 状態 --------------------------------------------------------------
 
 // フィルタはページごとに別々に持つ。
-// サマリーで8月を見ながら、成果明細では9月を見る、といった使い分けができる。
+// サマリーで8月を見ながら、成果データでは9月を見る、といった使い分けができる。
 // タブを戻すと、そのページで見ていた条件に戻る。
 // 絞り込みの3状態:
 //   null … 絞らない（＝全部。チェックは全部入って見える）
@@ -55,7 +55,13 @@ const state = {
     ],
   },
   rank: { metric: 'sales', dayDim: 'affiliate', data: {}, open: new Set() },
-  detail: { page: 0, size: 100, search: '', rows: [], total: 0 },
+  // 急上昇: 直近◯日と、その前の◯日をくらべる
+  surge: { dim: 'affiliate', window: 7, order: 'up', by: 'delta', rows: [] },
+  detail: {
+    page: 0, size: 100, search: '', rows: [], total: 0,
+    colFilters: {},                        // 列名 → 選んだ値の配列（見出しのフィルタ）
+    sort: { key: 'occurred_at', dir: 'desc' },
+  },
 };
 
 // 「相手を選んで時系列で見る」画面（広告主/アフィリエイター・比較）の共通の持ち物
@@ -392,6 +398,12 @@ function wireViewControls() {
   // ランキング
   segClick('#rank-metric', 'rankmetric', (v) => { state.rank.metric = v; });
 
+  // 急上昇
+  segClick('#surge-dim', 'surgedim', (v) => { state.surge.dim = v; resetSort($('#t-surge')); });
+  segClick('#surge-window', 'surgewindow', (v) => { state.surge.window = Number(v); });
+  segClick('#surge-order', 'surgeorder', (v) => { state.surge.order = v; resetSort($('#t-surge')); });
+  segClick('#surge-by', 'surgeby', (v) => { state.surge.by = v; resetSort($('#t-surge')); });
+
   // 広告主タブ / アフィリエイタータブ
   for (const kind of ['advertiser', 'affiliate']) {
     const input = $(`#${kind}-search`);
@@ -415,6 +427,11 @@ function wireViewControls() {
   });
   $('#detail-allcols').addEventListener('change', () => {
     resetSort($('#t-detail'));
+    renderDetail();
+  });
+  $('#detail-clear-filters').addEventListener('click', () => {
+    state.detail.colFilters = {};
+    state.detail.page = 0;
     renderDetail();
   });
   $('#detail-prev').addEventListener('click', () => {
@@ -833,6 +850,7 @@ async function render() {
     else if (state.view === 'advertiser')    await renderEntity('advertiser');
     else if (state.view === 'affiliate')     await renderEntity('affiliate');
     else if (state.view === 'rank')          await renderRank();
+    else if (state.view === 'surge')         await renderSurge();
     else if (state.view === 'detail')        await renderDetail();
   } catch (e) {
     toast(e.message);
@@ -844,7 +862,7 @@ async function render() {
   }
 }
 
-// 成果明細を、理由つきの空表示にする
+// 成果データを、理由つきの空表示にする
 function showDetailEmpty(reason) {
   const table = $('#t-detail');
   table.replaceChildren(el('tbody', {}, el('tr', {},
@@ -1609,14 +1627,57 @@ async function loadRankBreakdown(dimKey, id, host, metric) {
   }
 }
 
+// 前と比べてどう動いたかの目印。
+// 伸び率で5段階に分ける。前が0で今が出ていれば「新規」扱い。
+const TREND_UP2 = 2.0;     // 2倍以上 → 急上昇
+const TREND_UP1 = 1.15;    // 15%以上 → 上昇
+const TREND_DN1 = 0.85;    // 15%以上減 → 下降
+const TREND_DN2 = 0.5;     // 半分以下 → 急降下
+
+function trendOf(now, prev) {
+  const v = Number(now || 0);
+  const p = Number(prev || 0);
+  if (p === 0 && v === 0) return { key: 'none', mark: '', label: '—', rate: null };
+  if (p === 0) return { key: 'new', mark: '★', label: '新規', rate: null };
+  if (v === 0) return { key: 'down2', mark: '⇊', label: '急降下', rate: -1 };
+  const r = v / p;
+  const rate = r - 1;
+  if (r >= TREND_UP2) return { key: 'up2', mark: '⇈', label: '急上昇', rate };
+  if (r >= TREND_UP1) return { key: 'up1', mark: '↑', label: '上昇', rate };
+  if (r <= TREND_DN2) return { key: 'down2', mark: '⇊', label: '急降下', rate };
+  if (r <= TREND_DN1) return { key: 'down1', mark: '↓', label: '下降', rate };
+  return { key: 'flat', mark: '→', label: '横ばい', rate };
+}
+
+// 伸び率の表示（+120% / −45%）
+function rateText(rate) {
+  if (rate === null || rate === undefined || !Number.isFinite(rate)) return '';
+  const pct100 = rate * 100;
+  const sign = pct100 > 0 ? '+' : pct100 < 0 ? '−' : '±';
+  const abs = Math.abs(pct100);
+  return `${sign}${abs >= 1000 ? Math.round(abs) : abs.toFixed(abs < 10 ? 1 : 0)}%`;
+}
+
+function trendNode(t) {
+  if (!t.mark) return null;
+  return el('span', { class: `trend is-${t.key}`, title: t.label },
+    el('span', { class: 'mk', text: t.mark }),
+    t.rate === null ? null : el('span', { class: 'rt', text: rateText(t.rate) }));
+}
+
 // 日別ランキング。日付を横に並べて、その下にその日の順位を積む。
 function rankDayWidget(rows, metric) {
   const buckets = [...new Set((rows || []).map((x) => String(x.bucket)))].sort();
 
   // 日 → その日の順位（上位だけ）
   const byDay = new Map(buckets.map((b) => [b, []]));
+  // 相手 → 日 → 値（前日とくらべるのに使う）
+  const bySeries = new Map();
   for (const x of rows || []) {
-    byDay.get(String(x.bucket))?.push({ label: x.series, value: Number(x[metric.key] || 0) });
+    const v = Number(x[metric.key] || 0);
+    byDay.get(String(x.bucket))?.push({ label: x.series, value: v });
+    if (!bySeries.has(x.series)) bySeries.set(x.series, new Map());
+    bySeries.get(x.series).set(String(x.bucket), v);
   }
   for (const list of byDay.values()) list.sort((a, b) => b.value - a.value);
 
@@ -1633,7 +1694,7 @@ function rankDayWidget(rows, metric) {
   const bodyRows = Array.from({ length: RANK_DAY_TOP }, (_, i) =>
     el('tr', {}, el('th', { class: 'rowhead', text: `${i + 1}位` })));
 
-  for (const b of buckets) {
+  buckets.forEach((b, bi) => {
     const d = new Date(b + 'T00:00:00');
     const kind = dayKind(b, d.getDay());
     const cls = kind ? `is-${kind}` : null;
@@ -1641,17 +1702,25 @@ function rankDayWidget(rows, metric) {
       b.slice(5).replace('-', '/'),
       el('span', { class: 'wd', text: holidayName(b) ? '祝' : WEEKDAY[d.getDay()] })));
 
+    const prevDay = bi > 0 ? buckets[bi - 1] : null;
     const list = byDay.get(b) || [];
     for (let i = 0; i < RANK_DAY_TOP; i += 1) {
       const hit = list[i];
+      if (!hit || hit.value <= 0) {
+        bodyRows[i].append(el('td', { class: cls }, el('span', { class: 'muted', text: '—' })));
+        continue;
+      }
+      // 前日の同じ相手とくらべる（順位ではなく、その相手の数字の動き）
+      const prev = prevDay ? bySeries.get(hit.label)?.get(prevDay) : null;
+      const t = prevDay ? trendOf(hit.value, prev ?? 0) : { key: 'none', mark: '', label: '', rate: null };
       bodyRows[i].append(el('td', { class: cls },
-        hit && hit.value > 0
-          ? el('span', { class: 'day-hit' },
-            el('span', { class: 'nm trunc', text: hit.label, title: hit.label }),
-            el('span', { class: 'vl', text: metric.money ? compact(hit.value) : num(hit.value) }))
-          : el('span', { class: 'muted', text: '—' })));
+        el('span', { class: 'day-hit' },
+          el('span', { class: 'nm trunc', text: hit.label, title: hit.label }),
+          el('span', { class: 'vl' },
+            metric.money ? compact(hit.value) : num(hit.value),
+            trendNode(t)))));
     }
-  }
+  });
 
   const table = el('table', { class: 'matrix rank-day' },
     el('thead', {}, head), el('tbody', {}, ...bodyRows));
@@ -1666,6 +1735,126 @@ function rankDayWidget(rows, metric) {
       dimSeg,
       el('span', { class: 'eb-stats', text: `上位${RANK_DAY_SERIES}件の中での順位` })),
     buckets.length ? wrap : el('p', { class: 'empty', text: 'データがありません' }));
+}
+
+// ---- 急上昇 --------------------------------------------------------------
+//
+// 期間の終わりから「直近◯日」と「その前の◯日」を切り出して、
+// 売上がどれだけ動いたかで並べる。伸びた相手を見つけるための画面。
+
+const SURGE_ROWS = 40;      // 表に出す件数
+const SURGE_BARS = 15;      // グラフに出す本数
+// 伸び率だけで並べると、100円が1,100円になった相手が1位になってしまう。
+// 直近の売上がこの額に満たない相手は、伸び率順から外す。
+const SURGE_FLOOR = 10000;
+
+// 見出しから並べ替えたとき、上のボタンの見た目も合わせる
+function syncSurgeChips() {
+  const s = state.surge;
+  $$('#surge-by .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.surgeby === s.by));
+  $$('#surge-order .chip').forEach((c) => c.classList.toggle('is-active', c.dataset.surgeorder === s.order));
+}
+
+async function renderSurge() {
+  const s = state.surge;
+  const f = state.filter;
+  const win = s.window;
+
+  // 期間の終わりを起点に、直近◯日 と その前の◯日
+  const to = new Date(f.to);
+  const recentFrom = addDays(to, -(win - 1));
+  const prevTo = addDays(recentFrom, -1);
+  const prevFrom = addDays(prevTo, -(win - 1));
+
+  const range = (from, until) => ({ ...f, from: ymd(from), to: ymd(until) });
+  const dimLabel = LIST_LABEL[s.dim];
+
+  $('#surge-title').textContent =
+    `${dimLabel}の${s.order === 'up' ? '急上昇' : '急降下'}`;
+
+  // 2回に分けて取る（一度に投げると小さいインスタンスで詰まる）
+  const recent = await api.dimension(range(recentFrom, to), s.dim, 500);
+  const before = await api.dimension(range(prevFrom, prevTo), s.dim, 500);
+
+  const prevBy = new Map(before.map((r) => [r.label, Number(r.sales || 0)]));
+  const seen = new Set();
+  const rows = [];
+
+  const push = (label, now, prev) => {
+    if (seen.has(label)) return;
+    seen.add(label);
+    const t = trendOf(now, prev);
+    rows.push({
+      label,
+      recent: now,
+      before: prev,
+      delta: now - prev,
+      rate: t.rate,
+      trend: t,
+      // 伸び率順のときは、金額が小さすぎる相手を後ろに回す
+      rateSortable: now >= SURGE_FLOOR || prev >= SURGE_FLOOR,
+    });
+  };
+
+  for (const r of recent) push(r.label, Number(r.sales || 0), prevBy.get(r.label) || 0);
+  // 直近で消えた相手（前はあったのに今は0）も拾う
+  for (const r of before) push(r.label, 0, Number(r.sales || 0));
+
+  const dir = s.order === 'up' ? 1 : -1;
+  rows.sort((a, b) => {
+    if (s.by === 'rate') {
+      // 金額が小さすぎるものは常に後ろ
+      if (a.rateSortable !== b.rateSortable) return a.rateSortable ? -1 : 1;
+      const ra = a.rate === null ? (a.recent > 0 ? Infinity : -Infinity) : a.rate;
+      const rb = b.rate === null ? (b.recent > 0 ? Infinity : -Infinity) : b.rate;
+      if (ra !== rb) return (rb - ra) * dir;
+    }
+    return (b.delta - a.delta) * dir;
+  });
+
+  // 「上がった相手」を見たいのに下がった相手が混ざると読みにくいので分ける
+  const picked = rows
+    .filter((r) => (s.order === 'up' ? r.delta > 0 : r.delta < 0))
+    .slice(0, SURGE_ROWS);
+  s.rows = picked;
+
+  const label = (d) => ymd(d).slice(5).replace('-', '/');
+  const spanText = `直近 ${label(recentFrom)}〜${label(to)} と `
+    + `その前 ${label(prevFrom)}〜${label(prevTo)} をくらべています`;
+
+  // 並べ替えは上のボタンと同じ仕組みでやる。
+  // ここで表に任せてしまうと、順位の数字と行の並びがずれる。
+  renderTable($('#t-surge'), [
+    { key: 'rank', label: '順位', type: 'num', sortable: false },
+    { key: 'label', label: dimLabel, type: 'text', sortable: false },
+    { key: 'trendKey', label: '動き', sortable: false, cellClass: 'num',
+      render: (r) => trendNode(r.trend) || el('span', { class: 'muted', text: '—' }) },
+    { key: 'recent', label: `直近${win}日`, type: 'yen', sortable: false },
+    { key: 'before', label: `前の${win}日`, type: 'yen', sortable: false },
+    { key: 'delta', label: '増減額', type: 'yen', title: 'クリックで増減額順' },
+    { key: 'rate', label: '伸び率', cellClass: 'num', title: 'クリックで伸び率順',
+      render: (r) => (r.rate === null
+        ? el('span', { class: 'muted', text: '新規' })
+        : rateText(r.rate)) },
+  ], picked.map((r, i) => ({ ...r, rank: i + 1 })), {
+    empty: `${spanText}／該当なし`,
+    externalSort: { key: s.by === 'rate' ? 'rate' : 'delta', dir: s.order === 'up' ? 'desc' : 'asc' },
+    onSort: (col) => {
+      const by = col.key === 'rate' ? 'rate' : 'delta';
+      // 同じ列をもう一度押したら、急上昇 ↔ 急降下 を入れ替える
+      if (s.by === by) s.order = s.order === 'up' ? 'down' : 'up';
+      else s.by = by;
+      syncSurgeChips();
+      render();
+    },
+  });
+
+  $('#surge-chart-title').textContent = `増減額 上位${Math.min(SURGE_BARS, picked.length)} — ${spanText}`;
+
+  const top = picked.slice(0, SURGE_BARS);
+  ch.bar('c-surge', top.map((r) => r.label), [
+    { label: '増減額', data: top.map((r) => r.delta) },
+  ], { horizontal: true, money: true });
 }
 
 // ---- 比較 ----------------------------------------------------------------
@@ -1875,11 +2064,19 @@ function fmtMetric(v, metric) {
   return metric.money ? yen(v) : num(v);
 }
 
-// ---- 成果明細 ----------------------------------------------------------
+// ---- 成果データ ----------------------------------------------------------
+
+// 見出しから絞り込める列（値の一覧を出せるもの）。
+// 発生日時や金額のように値が散らばる列は、一覧にしても選べないので入れない。
+const DETAIL_FILTERABLE = new Set([
+  'status', 'advertiser_id', 'affiliate_id', 'product_name',
+  'ad_name', 'campaign', 'reward_rate', 'pay_status', 'device', 'os',
+]);
 
 async function renderDetail() {
   const d = state.detail;
-  const rows = await api.conversions(state.filter, d.search, d.size, d.page * d.size);
+  const rows = await api.conversions(
+    state.filter, d.search, d.size, d.page * d.size, d.colFilters, d.sort);
 
   // 何ページも送ったあとで期間や絞り込みを変えると、件数が減って
   // 「ページの先」を見に行ったままになり、表が丸ごと空になる。
@@ -1901,6 +2098,9 @@ async function renderDetail() {
     return;
   }
 
+  const nFilters = activeColFilters().length;
+  $('#detail-clear-filters').hidden = nFilters === 0;
+  $('#detail-clear-filters').textContent = `列の絞り込みを解除（${nFilters}列）`;
   $('#detail-count').textContent = `${num(d.total)} 件中 ${d.total ? d.page * d.size + 1 : 0}〜${d.page * d.size + rows.length} 件を表示`;
   const pages = Math.max(Math.ceil(d.total / d.size), 1);
   $('#detail-page').textContent = `${d.page + 1} / ${pages} ページ`;
@@ -1930,13 +2130,167 @@ async function renderDetail() {
   ];
   const cols = $('#detail-allcols').checked ? [...core, ...extra] : core;
 
-  renderTable($('#t-detail'), cols, rows,
-    { sortKey: 'occurred_at', sortDir: 'desc', empty: '該当する成果がありません' });
+  renderTable($('#t-detail'), cols, rows, {
+    empty: '該当する成果がありません',
+    externalSort: d.sort,                       // 並べ替えはサーバ側
+    onSort: (col) => {
+      d.sort = d.sort.key === col.key
+        ? { key: col.key, dir: d.sort.dir === 'asc' ? 'desc' : 'asc' }
+        : { key: col.key, dir: col.type === 'text' ? 'asc' : 'desc' };
+      d.page = 0;
+      renderDetail();
+    },
+    headerAddon: (col) => (DETAIL_FILTERABLE.has(col.key) ? filterButton(col) : null),
+  });
+}
+
+// ---- 表計算ソフト風の列フィルタ ------------------------------------------
+// 見出しの漏斗を押すと、その列に入っている値の一覧が出る。
+// チェックした値だけに絞る。絞り込みも並べ替えもサーバ側でやるので、
+// 画面に出ていない行にもちゃんと効く。
+
+function activeColFilters() {
+  return Object.keys(state.detail.colFilters || {});
+}
+
+function filterButton(col) {
+  const on = Boolean(state.detail.colFilters?.[col.key]);
+  const btn = el('button', {
+    type: 'button',
+    class: `th-tool${on ? ' is-on' : ''}`,
+    title: on ? 'この列で絞り込み中' : '値で絞り込む',
+    'aria-label': `${col.label} で絞り込む`,
+  });
+  btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openColumnMenu(col, btn);
+  });
+  return btn;
+}
+
+let colMenu = null;
+
+function closeColumnMenu() {
+  colMenu?.remove();
+  colMenu = null;
+}
+
+document.addEventListener('click', (e) => {
+  if (colMenu && !e.target.closest('.col-menu') && !e.target.closest('.th-tool')) closeColumnMenu();
+});
+addEventListener('resize', closeColumnMenu);
+
+async function openColumnMenu(col, anchor) {
+  const open = colMenu?.dataset.col === col.key;
+  closeColumnMenu();
+  if (open) return;                    // 同じ列をもう一度押したら閉じるだけ
+
+  const d = state.detail;
+  const menu = el('div', { class: 'col-menu', 'data-col': col.key });
+  menu.dataset.col = col.key;
+  menu.append(el('p', { class: 'muted small', text: '読み込み中…' }));
+  document.body.append(menu);
+  colMenu = menu;
+  placeAt(menu, anchor);
+
+  let values;
+  try {
+    values = await api.conversionValues(state.filter, col.key, d.search, d.colFilters);
+  } catch (err) {
+    menu.replaceChildren(el('p', { class: 'muted small', text: '読み込めませんでした: ' + err.message }));
+    return;
+  }
+  if (colMenu !== menu) return;        // 待っている間に閉じられた
+
+  // いま選んでいる値。未設定なら「全部入り」として見せる。
+  const picked = d.colFilters[col.key] ?? null;
+  const isOn = (v) => picked === null || picked.includes(v);
+
+  const apply = (list) => {
+    // 全部選んだ状態は「絞っていない」と同じ扱いにする
+    if (list === null || list.length === values.length) delete d.colFilters[col.key];
+    else d.colFilters[col.key] = list;
+    d.page = 0;
+    closeColumnMenu();
+    renderDetail();
+  };
+
+  const sortBtn = (dir, text) => el('button', {
+    type: 'button',
+    class: `chip${d.sort.key === col.key && d.sort.dir === dir ? ' is-active' : ''}`,
+    text,
+    onclick: () => {
+      d.sort = { key: col.key, dir };
+      d.page = 0;
+      closeColumnMenu();
+      renderDetail();
+    },
+  });
+
+  const search = el('input', { type: 'search', class: 'menu-search', placeholder: '値を検索' });
+  const list = el('div', { class: 'col-menu-list' });
+
+  const draw = () => {
+    const q = search.value.trim().toLowerCase();
+    const shown = q ? values.filter((v) => String(v.value).toLowerCase().includes(q)) : values;
+    list.replaceChildren(...(shown.length
+      ? shown.map((v) => {
+        const cb = el('input', { type: 'checkbox', value: v.value });
+        cb.checked = isOn(v.value);
+        cb.addEventListener('change', () => {
+          const cur = new Set(picked === null ? values.map((x) => x.value) : picked);
+          if (cb.checked) cur.add(v.value);
+          else cur.delete(v.value);
+          apply(values.map((x) => x.value).filter((x) => cur.has(x)));
+        });
+        return el('label', { class: 'pick' }, cb,
+          el('span', { class: 'name', text: v.value }),
+          el('span', { class: 'cmp-sub', text: num(v.n) }));
+      })
+      : [el('p', { class: 'muted small', text: '該当なし' })]));
+  };
+  search.addEventListener('input', draw);
+  search.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+
+  const visibleValues = () => {
+    const q = search.value.trim().toLowerCase();
+    return (q ? values.filter((v) => String(v.value).toLowerCase().includes(q)) : values)
+      .map((v) => v.value);
+  };
+
+  menu.replaceChildren(
+    el('div', { class: 'col-menu-head' },
+      el('div', { class: 'seg' }, sortBtn('asc', '昇順'), sortBtn('desc', '降順')),
+      search,
+      el('div', { class: 'seg' },
+        el('button', { type: 'button', class: 'chip', text: 'すべて', onclick: () => apply(null) }),
+        el('button', {
+          type: 'button', class: 'chip', text: '表示中を選ぶ',
+          title: '検索で絞った値だけを選ぶ',
+          onclick: () => apply(visibleValues()),
+        }),
+        el('button', { type: 'button', class: 'chip', text: '全部外す', onclick: () => apply([]) }))),
+    list,
+  );
+  draw();
+  placeAt(menu, anchor);
+}
+
+// ポップアップを、押したボタンの真下（画面からはみ出すなら内側に寄せて）置く
+function placeAt(node, anchor) {
+  const a = anchor.getBoundingClientRect();
+  node.style.top = `${a.bottom + 4}px`;
+  node.style.left = '0px';
+  const w = node.offsetWidth;
+  node.style.left = `${Math.min(Math.max(8, a.left - 10), Math.max(8, innerWidth - w - 8))}px`;
+  node.style.maxHeight = `${Math.max(200, innerHeight - a.bottom - 20)}px`;
 }
 
 // ---- CSV 出力 ----------------------------------------------------------
 
-// 成果明細は画面に出ている100件だけでなく、条件に合う全件を出す。
+// 成果データは画面に出ている100件だけでなく、条件に合う全件を出す。
 // 1回で取ると重いので、ページ送りしながら集める。
 // 小さいインスタンスなので、まとめて投げると後続が詰まってタイムアウトする。
 // 1回あたりを軽くして、間にひと呼吸置く。
@@ -1949,7 +2303,8 @@ async function fetchAllConversions() {
   let total = Infinity;
 
   while (out.length < total) {
-    const rows = await api.conversions(state.filter, d.search, CSV_PAGE, out.length);
+    const rows = await api.conversions(
+      state.filter, d.search, CSV_PAGE, out.length, d.colFilters, d.sort);
     if (!rows.length) break;
     total = Number(rows[0].total_count) || rows.length;
     out.push(...rows);
@@ -2003,13 +2358,20 @@ async function exportCsv(kind) {
     }
     downloadCsv(`ランキング_${metric.label}_${stamp}.csv`,
       ['種類', '順位', '名前', '成果件数', '売上', '報酬額', 'クリック'], rows);
+  } else if (kind === 'surge') {
+    const s = state.surge;
+    downloadCsv(`${s.order === 'up' ? '急上昇' : '急降下'}_${LIST_LABEL[s.dim]}_${s.window}日_${stamp}.csv`,
+      [LIST_LABEL[s.dim], `直近${s.window}日 売上`, `前の${s.window}日 売上`, '増減額', '伸び率(%)', '動き'],
+      (s.rows || []).map((r) => [
+        r.label, r.recent, r.before, r.delta,
+        r.rate === null ? '' : Math.round(r.rate * 1000) / 10, r.trend.label]));
   } else if (kind === 'conversions') {
     // 画面は100件ずつだが、CSV は条件に合う全件を出す
     busy(true);
     try {
       const all = await fetchAllConversions();
       if (!all.length) { toast('出力する成果がありません'); return; }
-      downloadCsv(`成果明細_${stamp}.csv`,
+      downloadCsv(`成果データ_${stamp}.csv`,
         ['発生日時', 'ステータス', '広告主', 'アフィリエイター', '商品名', '広告名', 'キャンペーン',
           '数量', '販売価格', '報酬額', '報酬率', '支払い状況', 'デバイス', 'OS', '初回リファラ', '注文ID'],
         all.map((r) => [

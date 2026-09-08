@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609081017">
+<link rel="stylesheet" href="css/app.css?v=202609081037">
 </head>
 <body>
 
@@ -90,9 +90,13 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11"/><path d="M4 12h7"/><path d="M4 17h15"/><path d="M19 4v6"/><path d="M16.5 6.5L19 4l2.5 2.5"/></svg>
       <span>ランキング</span>
     </button>
-    <button class="tab" data-view="detail" title="成果明細">
+    <button class="tab" data-view="surge" title="急上昇">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
+      <span>急上昇</span>
+    </button>
+    <button class="tab" data-view="detail" title="成果データ">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-      <span>成果明細</span>
+      <span>成果データ</span>
     </button>
     <button class="tab" data-view="import" title="データ取込">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3h16v-3"/></svg>
@@ -326,18 +330,55 @@
         </div>
       </section>
 
-      <!-- 成果明細 -->
+      <!-- 急上昇: 直近と、その前の同じ日数をくらべて伸びた相手を出す -->
+      <section class="view v-rank" data-view="surge" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2 id="surge-title">急上昇</h2>
+            <div class="row wrap">
+              <div class="seg" id="surge-dim">
+                <button class="chip is-active" data-surgedim="affiliate">アフィリエイター</button>
+                <button class="chip" data-surgedim="advertiser">広告主</button>
+              </div>
+              <span class="muted small">くらべる幅</span>
+              <div class="seg" id="surge-window">
+                <button class="chip" data-surgewindow="3">3日</button>
+                <button class="chip is-active" data-surgewindow="7">7日</button>
+                <button class="chip" data-surgewindow="14">14日</button>
+                <button class="chip" data-surgewindow="30">30日</button>
+              </div>
+              <div class="seg" id="surge-order">
+                <button class="chip is-active" data-surgeorder="up">急上昇</button>
+                <button class="chip" data-surgeorder="down">急降下</button>
+              </div>
+              <div class="seg" id="surge-by">
+                <button class="chip is-active" data-surgeby="delta">増減額順</button>
+                <button class="chip" data-surgeby="rate">伸び率順</button>
+              </div>
+              <button class="btn sm" data-export="surge">CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="t-surge"></table></div>
+        </div>
+        <div class="card">
+          <h2 id="surge-chart-title">増減の大きい相手</h2>
+          <div class="chart-wrap"><canvas id="c-surge"></canvas></div>
+        </div>
+      </section>
+
+      <!-- 成果データ -->
       <section class="view v-detail" data-view="detail" hidden>
         <div class="card">
           <div class="card-head">
-            <h2>成果明細</h2>
-            <div class="row">
+            <h2>成果データ</h2>
+            <div class="row wrap">
               <input id="detail-search" type="search" placeholder="商品名・広告名・アフィリエイターID・注文ID・リファラ">
               <button id="detail-go" class="btn primary sm">検索</button>
               <label class="inline check">
                 <input type="checkbox" id="detail-allcols">
                 全列
               </label>
+              <button class="btn sm" id="detail-clear-filters" hidden>フィルタを全部消す</button>
               <button class="btn sm" data-export="conversions">CSV</button>
               <span class="muted small" id="detail-count"></span>
             </div>
@@ -437,6 +478,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609081017"></script>
+<script type="module" src="js/app.js?v=202609081037"></script>
 </body>
 </html>

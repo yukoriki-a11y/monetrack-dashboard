@@ -27,7 +27,12 @@ const nf0 = new Intl.NumberFormat('ja-JP');
 const nf2 = new Intl.NumberFormat('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const num = (v) => (v === null || v === undefined || v === '' ? '—' : nf0.format(Math.round(Number(v))));
-export const yen = (v) => (v === null || v === undefined || v === '' ? '—' : '¥' + nf0.format(Math.round(Number(v))));
+// マイナスは「¥-180,000」ではなく「-¥180,000」と出す（記号の位置を通貨の外に）
+export const yen = (v) => {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = Math.round(Number(v));
+  return (n < 0 ? '-¥' : '¥') + nf0.format(Math.abs(n));
+};
 export const pct = (v) => (v === null || v === undefined || v === '' ? '—' : nf2.format(Number(v)) + '%');
 
 // グラフの軸や KPI 用の短縮表記。1230万 / 1.2億 のように読める形にする。

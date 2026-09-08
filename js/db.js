@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081017';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081037';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -150,8 +150,31 @@ export const api = {
       p_advertisers: scope.advertisers?.length ? scope.advertisers : listArg(f.advertisers),
       p_affiliates: scope.affiliates?.length ? scope.affiliates : listArg(f.affiliates),
     }),
-  conversions: (f, search, limit, offset) =>
-    rpc('dash_conversions', { ...base(f), p_search: search || null, p_limit: limit, p_offset: offset }),
+  // p_filters は列ごとの絞り込み {"device":["パソコン"]}。
+  // 表計算ソフトの見出しフィルタに対応する。
+  conversions: (f, search, limit, offset, cols = null, sort = null) =>
+    rpc('dash_conversions', {
+      ...base(f),
+      p_search: search || null,
+      p_limit: limit,
+      p_offset: offset,
+      p_filters: cols && Object.keys(cols).length ? cols : null,
+      p_sort: sort?.key || 'occurred_at',
+      p_dir: sort?.dir === 'asc' ? 'asc' : 'desc',
+    }),
+  // その列に入っている値の候補（多い順）
+  conversionValues: (f, col, search, cols = null, limit = 500) =>
+    rpc('dash_conversion_values', {
+      p_from: f.from,
+      p_to: f.to,
+      p_col: col,
+      p_statuses: listArg(f.statuses),
+      p_advertisers: listArg(f.advertisers),
+      p_affiliates: listArg(f.affiliates),
+      p_search: search || null,
+      p_filters: cols && Object.keys(cols).length ? cols : null,
+      p_limit: limit,
+    }),
   imports:   (limit = 50)        => rpc('dash_imports', { p_limit: limit }),
 
   // 取り込み

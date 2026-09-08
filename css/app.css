@@ -736,7 +736,31 @@ table.matrix.rank-day td { text-align: left; min-width: 130px; }
 table.matrix.rank-day th.rowhead { min-width: 56px; text-align: center; }
 .day-hit { display: grid; gap: 1px; }
 .day-hit .nm { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 118px; }
-.day-hit .vl { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.day-hit .vl {
+  font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  display: flex; align-items: baseline; gap: 5px;
+}
+
+/* ---------- 前と比べてどう動いたかの目印 ---------- */
+/* 上がった=緑・下がった=赤。急なものは記号を二重にして目で拾えるようにする */
+.trend { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.trend .mk { font-size: 11px; line-height: 1; }
+.trend .rt { font-size: 10px; font-variant-numeric: tabular-nums; }
+.trend.is-up2   { color: var(--ok);   font-weight: 700; }
+.trend.is-up1   { color: var(--ok); }
+.trend.is-flat  { color: var(--ink-3); }
+.trend.is-down1 { color: var(--bad); }
+.trend.is-down2 { color: var(--bad); font-weight: 700; }
+.trend.is-new   { color: var(--ok); font-weight: 700; }
+/* 急なものだけ、地の色でも分かるようにする */
+.trend.is-up2 .mk, .trend.is-new .mk {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  border-radius: 4px; padding: 1px 3px;
+}
+.trend.is-down2 .mk {
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  border-radius: 4px; padding: 1px 3px;
+}
 
 /* 比較: 2つの枠を左右か上下に置く */
 .v-versus { grid-template-rows: minmax(0, 1fr); }
@@ -907,8 +931,53 @@ thead th {
   cursor: pointer;
   user-select: none;
 }
-thead th.sorted-asc::after  { content: " ▲"; color: var(--ink); font-size: 8px; }
-thead th.sorted-desc::after { content: " ▼"; color: var(--ink); font-size: 8px; }
+thead th.sorted-asc  .th-label::after { content: " ▲"; color: var(--ink); font-size: 8px; }
+thead th.sorted-desc .th-label::after { content: " ▼"; color: var(--ink); font-size: 8px; }
+
+/* ---------- 表計算ソフト風の列フィルタ ---------- */
+/* 見出しの右端に小さな漏斗。絞り込み中は色を濃くして分かるようにする */
+.th-tool {
+  appearance: none;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0 0 0 5px;
+  cursor: pointer;
+  color: var(--ink-3);
+  vertical-align: middle;
+  line-height: 0;
+}
+.th-tool svg { width: 11px; height: 11px; fill: currentColor; display: inline-block; }
+.th-tool:hover { color: var(--ink); }
+.th-tool.is-on { color: var(--ink); }
+.th-tool.is-on::after {
+  content: "";
+  display: inline-block;
+  width: 4px; height: 4px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--ink);
+  vertical-align: top;
+}
+
+.col-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 250px;
+  max-width: 340px;
+  background: var(--panel);
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(16, 24, 40, .28);
+  padding: 8px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+}
+.col-menu-head { display: grid; gap: 5px; }
+.col-menu-list { overflow: auto; display: grid; gap: 2px; align-content: start; scrollbar-width: thin; }
+.col-menu .pick .name { max-width: 190px; }
+.col-menu .cmp-sub { margin-left: auto; color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 /* 行の区切りも罫線をやめ、1行ごとの地の濃淡（縞）で見せる */
 tbody td { padding: 6px 9px; vertical-align: top; }
 tbody tr:nth-child(odd) { background: var(--panel); }

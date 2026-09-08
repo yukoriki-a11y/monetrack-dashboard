@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609081512">
+<link rel="stylesheet" href="css/app.css?v=202609081916">
 </head>
 <body>
 
@@ -48,8 +48,33 @@
       <input id="login-pass" type="password" autocomplete="current-password">
     </label>
     <p class="err" id="login-err" hidden></p>
+    <p class="ok-msg" id="login-msg" hidden></p>
     <button id="login-btn" class="btn primary">ログイン</button>
+    <button id="login-forgot" class="btn link">パスワードを忘れた</button>
     <button id="setup-reset" class="btn link">接続先を変更する</button>
+  </div>
+</section>
+
+<!-- ============ パスワードを決める ============
+     招待メール／パスワード再設定メールのリンクから来たときに出す。
+     リンクにはログイン用の一時的な鍵が入っているので、この画面では
+     新しいパスワードを決めるだけでよい。 -->
+<section id="setpass" class="gate" hidden>
+  <div class="gate-card">
+    <div class="gate-brand">
+      <img class="wordmark lg" src="assets/monetrack-wordmark.png" alt="monetrack">
+      <span>成果分析</span>
+    </div>
+    <h1 id="setpass-title">パスワードを決めてください</h1>
+    <p class="muted" id="setpass-who"></p>
+    <label>新しいパスワード（8文字以上）
+      <input id="setpass-a" type="password" autocomplete="new-password">
+    </label>
+    <label>もう一度入力
+      <input id="setpass-b" type="password" autocomplete="new-password">
+    </label>
+    <p class="err" id="setpass-err" hidden></p>
+    <button id="setpass-btn" class="btn primary">設定して始める</button>
   </div>
 </section>
 
@@ -478,6 +503,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609081512"></script>
+<script type="module" src="js/app.js?v=202609081916"></script>
 </body>
 </html>

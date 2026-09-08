@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081512';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081916';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -61,6 +61,21 @@ export async function signIn(email, password) {
 
 export async function signOut() {
   await sb().auth.signOut();
+}
+
+// 招待／再設定メールのリンクで入ってきた人が、自分でパスワードを決める。
+// リンクに一時的な鍵が入っていて既にログイン状態なので、更新するだけでよい。
+export async function updatePassword(password) {
+  const { error } = await sb().auth.updateUser({ password });
+  if (error) throw error;
+}
+
+// パスワードを忘れた人に再設定メールを送る。
+// 戻り先は Supabase の Redirect URLs に登録されている必要がある。
+export async function sendPasswordReset(email) {
+  const redirectTo = location.origin + location.pathname;
+  const { error } = await sb().auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) throw error;
 }
 
 export function onAuthChange(handler) {

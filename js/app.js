@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609081512';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081512';
-import * as ch from './charts.js?v=202609081512';
-import { renderTable, resetSort } from './table.js?v=202609081512';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081512';
-import { dayKind, holidayName } from './holiday.js?v=202609081512';
-import * as cfg from './settings.js?v=202609081512';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609081916';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202609081916';
+import * as ch from './charts.js?v=202609081916';
+import { renderTable, resetSort } from './table.js?v=202609081916';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081916';
+import { dayKind, holidayName } from './holiday.js?v=202609081916';
+import * as cfg from './settings.js?v=202609081916';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -88,11 +88,28 @@ const BUILD = new URL(import.meta.url).searchParams.get('v') || 'dev';
 
 // ---- 起動 --------------------------------------------------------------
 
+// 招待メールや再設定メールのリンクは、URL の # に一時的な鍵と type を付けて
+// 戻ってくる（type=invite / recovery など）。supabase-js がそれを読み取って
+// セッションを作り、# を消してしまうので、消される前にここで見ておく。
+const AUTH_LINK = (() => {
+  const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const q = new URLSearchParams(location.search);
+  const pick = (k) => h.get(k) || q.get(k);
+  return {
+    type: pick('type') || '',
+    error: pick('error_description') || pick('error') || '',
+  };
+})();
+
+// この2つで来た人は、まだ自分のパスワードを持っていない（決めてもらう）
+let needPassword = ['invite', 'recovery'].includes(AUTH_LINK.type);
+
 boot();
 
 async function boot() {
   wireSetup();
   wireLogin();
+  wireSetPass();
 
   if (!hasConn()) return show('setup');
 
@@ -102,20 +119,80 @@ async function boot() {
     return show('setup');
   }
 
+  // リンクが期限切れ・使用済みだと、鍵の代わりに理由が付いて戻ってくる
+  if (AUTH_LINK.error) {
+    needPassword = false;
+    show('login');
+    const err = $('#login-err');
+    err.hidden = false;
+    err.textContent = `リンクが使えませんでした（${AUTH_LINK.error}）。`
+      + '期限切れか、すでに使用済みの可能性があります。'
+      + '「パスワードを忘れた」から再送してください。';
+    return;
+  }
+
   onAuthChange((user) => {
-    if (user) startApp(user);
-    else show('login');
+    if (!user) return show('login');
+    if (needPassword) return askPassword(user);
+    startApp(user);
   });
 
   const user = await currentUser();
-  if (user) startApp(user);
-  else show('login');
+  if (!user) return show('login');
+  if (needPassword) return askPassword(user);
+  startApp(user);
 }
 
 function show(which) {
-  for (const id of ['setup', 'login', 'app']) {
+  for (const id of ['setup', 'login', 'setpass', 'app']) {
     $('#' + id).hidden = id !== which;
   }
+}
+
+// ---- パスワードを決める ------------------------------------------------
+
+function askPassword(user) {
+  show('setpass');
+  $('#setpass-title').textContent = AUTH_LINK.type === 'recovery'
+    ? 'パスワードを再設定してください'
+    : 'パスワードを決めてください';
+  $('#setpass-who').textContent = user.email
+    ? `${user.email} のパスワードを設定します`
+    : '';
+  $('#setpass-a').focus();
+}
+
+function wireSetPass() {
+  const submit = async () => {
+    const a = $('#setpass-a').value;
+    const b = $('#setpass-b').value;
+    const err = $('#setpass-err');
+    const fail = (msg) => { err.hidden = false; err.textContent = msg; };
+    err.hidden = true;
+
+    if (a.length < 8) return fail('8文字以上にしてください');
+    if (a !== b) return fail('2つの入力が一致しません');
+
+    try {
+      busy(true);
+      await updatePassword(a);
+      // 決め終わったので、次からは普通のログイン画面でよい
+      needPassword = false;
+      // URL に残った鍵を消しておく（履歴に残さない）
+      history.replaceState(null, '', location.pathname);
+      const user = await currentUser();
+      if (user) startApp(user);
+      else show('login');
+    } catch (e) {
+      fail(e.message === 'New password should be different from the old password.'
+        ? '前と同じパスワードは使えません'
+        : e.message);
+    } finally {
+      busy(false);
+    }
+  };
+  $('#setpass-btn').addEventListener('click', submit);
+  $('#setpass-b').addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
 }
 
 // ---- 接続設定 / ログイン ------------------------------------------------
@@ -190,6 +267,33 @@ function wireLogin() {
   };
   $('#login-btn').addEventListener('click', doLogin);
   $('#login-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+
+  // パスワードを忘れた人に再設定メールを送る。
+  // 「そのメールアドレスは登録が無い」とは返さない（誰が登録済みかを
+  // 外から調べられてしまうため）。送ったかどうかに関わらず同じ文言を出す。
+  $('#login-forgot').addEventListener('click', async () => {
+    const email = $('#login-email').value.trim();
+    const err = $('#login-err');
+    const msg = $('#login-msg');
+    err.hidden = true;
+    msg.hidden = true;
+    if (!email) {
+      err.hidden = false;
+      err.textContent = 'メールアドレスを入れてから押してください';
+      return;
+    }
+    try {
+      busy(true);
+      await sendPasswordReset(email);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      busy(false);
+      msg.hidden = false;
+      msg.textContent = `${email} に再設定用のメールを送りました。`
+        + '届かない場合は迷惑メールもご確認ください。';
+    }
+  });
 }
 
 // ---- アプリ本体 --------------------------------------------------------

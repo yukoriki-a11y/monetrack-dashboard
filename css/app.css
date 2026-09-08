@@ -687,8 +687,10 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
   gap: 6px;
   min-width: 0;
 }
-/* 日別明細は日付を横に伸ばすので、常に幅いっぱいを使う */
+/* 日別明細と売上の推移は横に伸ばしたほうが読めるので、幅いっぱいを使う */
 .eb-cell.wide { grid-column: 1 / -1; }
+/* 幅いっぱいのグラフは、そのぶん背も高くとる */
+.eb-cell.wide[data-part="line"] { height: 300px; }
 .eb-cell h4 { margin: 0; font-size: 11px; font-weight: 650; color: var(--ink-3); }
 /* かたまりの中は縦スクロールの中にいるので、高さは固定で与える。
    横に並ぶ3〜4枚の高さを揃え、中身が長いもの（上位◯◯）だけ中でスクロールさせる。 */

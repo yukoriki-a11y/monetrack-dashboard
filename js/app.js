@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081402';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081402';
-import * as ch from './charts.js?v=202609081402';
-import { renderTable, resetSort } from './table.js?v=202609081402';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081402';
-import { dayKind, holidayName } from './holiday.js?v=202609081402';
-import * as cfg from './settings.js?v=202609081402';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081407';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081407';
+import * as ch from './charts.js?v=202609081407';
+import { renderTable, resetSort } from './table.js?v=202609081407';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081407';
+import { dayKind, holidayName } from './holiday.js?v=202609081407';
+import * as cfg from './settings.js?v=202609081407';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -1162,11 +1162,15 @@ const ENTITY_PARTS = {
     { key: 'pie',      label: '広告主内訳' },
     { key: 'top',      label: '上位広告主' },
     { key: 'products', label: '上位商品' },
-    { key: 'line',     label: '売上の推移' },
     { key: 'referrer', label: '流入元' },
+    // 幅いっぱいを使うものは最後にまとめる（間に挟むと横並びが途切れる）
+    { key: 'line',     label: '売上の推移' },
     { key: 'matrix',   label: '日別明細' },
   ],
 };
+
+// 横に長く使う部品。日付や推移は横に伸ばしたほうが読める。
+const WIDE_PARTS = new Set(['line', 'matrix']);
 
 const ENTITY_BANDS = 8;  // 売上の推移を塗り分ける帯の本数
 const PIE_SLICES = 10;   // 円グラフに出す数（残りは「その他」にまとめる）
@@ -1372,7 +1376,10 @@ function entityShell(kind, row, parts) {
         el('span', { class: 'sep', text: '/' }), `クリック ${num(row.clicks)}`,
         el('span', { class: 'sep', text: '/' }), `CVR ${cvr === null ? '—' : pct(cvr)}`)),
     el('div', { class: 'eb-grid' },
-      ...parts.map((p) => el('div', { class: `eb-cell${p.key === 'matrix' ? ' wide' : ''}`, 'data-part': p.key },
+      ...parts.map((p) => el('div', {
+        class: `eb-cell${WIDE_PARTS.has(p.key) ? ' wide' : ''}`,
+        'data-part': p.key,
+      },
         el('h4', { text: p.label }),
         el('div', { class: 'eb-body', text: '読み込み中…' })))),
   );

@@ -597,6 +597,37 @@ $$;
 --   p_filters : 列ごとの絞り込み {"device":["パソコン"],"status":["承認"]}
 --   p_sort    : 並べ替える列名（既定 occurred_at）
 --   p_dir     : 'asc' か 'desc'
+-- 絞り込みの本体。件数用と明細用で同じものを使う。
+-- $1 from / $2 to / $3 statuses / $4 advertisers / $5 affiliates
+-- $6..$15 列フィルタ / $16 キーワード
+create or replace function public.dash_conv_where() returns text
+language sql immutable as $$
+  select $w$
+    c.occurred_at >= public.jst_start($1::date)
+    and c.occurred_at <  public.jst_start($2::date + 1)
+    and ($3::text[]  is null or c.status        = any($3::text[]))
+    and ($4::text[]  is null or c.advertiser_id = any($4::text[]))
+    and ($5::text[]  is null or c.affiliate_id  = any($5::text[]))
+    and ($6::text[]  is null or c.status        = any($6::text[]))
+    and ($7::text[]  is null or c.advertiser_id = any($7::text[]))
+    and ($8::text[]  is null or c.affiliate_id  = any($8::text[]))
+    and ($9::text[]  is null or c.product_name  = any($9::text[]))
+    and ($10::text[] is null or c.ad_name       = any($10::text[]))
+    and ($11::text[] is null or c.campaign      = any($11::text[]))
+    and ($12::text[] is null or c.reward_rate   = any($12::text[]))
+    and ($13::text[] is null or c.pay_status    = any($13::text[]))
+    and ($14::text[] is null or c.device        = any($14::text[]))
+    and ($15::text[] is null or c.os            = any($15::text[]))
+    and ($16::text is null or $16::text = ''
+         or c.product_name   ilike '%' || $16::text || '%'
+         or c.ad_name        ilike '%' || $16::text || '%'
+         or c.affiliate_id   ilike '%' || $16::text || '%'
+         or c.campaign       ilike '%' || $16::text || '%'
+         or c.order_id       ilike '%' || $16::text || '%'
+         or c.first_referrer ilike '%' || $16::text || '%')
+  $w$
+$$;
+
 create or replace function public.dash_conversions(
   p_from date,
   p_to date,
@@ -614,104 +645,72 @@ create or replace function public.dash_conversions(
   product_name text, ad_name text, campaign text, qty numeric, sale_price numeric,
   reward numeric, reward_rate text, status text, pay_status text,
   device text, os text, first_referrer text, total_count bigint
-) language sql security invoker stable as $$
-  -- 列フィルタの配列は、ここで1回だけ作る。
-  -- 2か所から参照するので materialized にして、確実に1回にする。
-  with fl as materialized (
-    select
-      public.jsonb_pick(p_filters, 'status')        as f_status,
-      public.jsonb_pick(p_filters, 'advertiser_id') as f_adv,
-      public.jsonb_pick(p_filters, 'affiliate_id')  as f_aff,
-      public.jsonb_pick(p_filters, 'product_name')  as f_prod,
-      public.jsonb_pick(p_filters, 'ad_name')       as f_ad,
-      public.jsonb_pick(p_filters, 'campaign')      as f_camp,
-      public.jsonb_pick(p_filters, 'reward_rate')   as f_rate,
-      public.jsonb_pick(p_filters, 'pay_status')    as f_pay,
-      public.jsonb_pick(p_filters, 'device')        as f_dev,
-      public.jsonb_pick(p_filters, 'os')            as f_os
-  ), n as (
-    select count(*) as total
-    from public.conversions c cross join fl
-    where c.occurred_at >= public.jst_start(p_from)
-      and c.occurred_at <  public.jst_start(p_to + 1)
-      and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
-      and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
-      and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
-      and (fl.f_status is null or c.status        = any(fl.f_status))
-      and (fl.f_adv    is null or c.advertiser_id = any(fl.f_adv))
-      and (fl.f_aff    is null or c.affiliate_id  = any(fl.f_aff))
-      and (fl.f_prod   is null or c.product_name  = any(fl.f_prod))
-      and (fl.f_ad     is null or c.ad_name       = any(fl.f_ad))
-      and (fl.f_camp   is null or c.campaign      = any(fl.f_camp))
-      and (fl.f_rate   is null or c.reward_rate   = any(fl.f_rate))
-      and (fl.f_pay    is null or c.pay_status    = any(fl.f_pay))
-      and (fl.f_dev    is null or c.device        = any(fl.f_dev))
-      and (fl.f_os     is null or c.os            = any(fl.f_os))
-      and (p_search is null or p_search = ''
-           or c.product_name   ilike '%' || p_search || '%'
-           or c.ad_name        ilike '%' || p_search || '%'
-           or c.affiliate_id   ilike '%' || p_search || '%'
-           or c.campaign       ilike '%' || p_search || '%'
-           or c.order_id       ilike '%' || p_search || '%'
-           or c.first_referrer ilike '%' || p_search || '%')
-  )
-  select
-    c.order_id, c.occurred_at, c.advertiser_id, c.affiliate_id,
-    c.product_name, c.ad_name, c.campaign, c.qty, c.sale_price,
-    c.reward, c.reward_rate, c.status, c.pay_status,
-    c.device, c.os, c.first_referrer, n.total
-  from public.conversions c cross join n cross join fl
-  where c.occurred_at >= public.jst_start(p_from)
-    and c.occurred_at <  public.jst_start(p_to + 1)
-    and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
-    and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
-    and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
-    and (fl.f_status is null or c.status        = any(fl.f_status))
-    and (fl.f_adv    is null or c.advertiser_id = any(fl.f_adv))
-    and (fl.f_aff    is null or c.affiliate_id  = any(fl.f_aff))
-    and (fl.f_prod   is null or c.product_name  = any(fl.f_prod))
-    and (fl.f_ad     is null or c.ad_name       = any(fl.f_ad))
-    and (fl.f_camp   is null or c.campaign      = any(fl.f_camp))
-    and (fl.f_rate   is null or c.reward_rate   = any(fl.f_rate))
-    and (fl.f_pay    is null or c.pay_status    = any(fl.f_pay))
-    and (fl.f_dev    is null or c.device        = any(fl.f_dev))
-    and (fl.f_os     is null or c.os            = any(fl.f_os))
-    and (p_search is null or p_search = ''
-         or c.product_name   ilike '%' || p_search || '%'
-         or c.ad_name        ilike '%' || p_search || '%'
-         or c.affiliate_id   ilike '%' || p_search || '%'
-         or c.campaign       ilike '%' || p_search || '%'
-         or c.order_id       ilike '%' || p_search || '%'
-         or c.first_referrer ilike '%' || p_search || '%')
-  order by
-    (case when p_sort = 'occurred_at' and p_dir = 'asc'  then c.occurred_at end) asc  nulls last,
-    (case when p_sort = 'occurred_at' and p_dir = 'desc' then c.occurred_at end) desc nulls last,
-    (case when p_dir = 'asc' then
-       case p_sort when 'qty' then c.qty when 'sale_price' then c.sale_price
-                   when 'reward' then c.reward end end) asc nulls last,
-    (case when p_dir = 'desc' then
-       case p_sort when 'qty' then c.qty when 'sale_price' then c.sale_price
-                   when 'reward' then c.reward end end) desc nulls last,
-    (case when p_dir = 'asc' then
-       case p_sort when 'advertiser_id' then c.advertiser_id when 'affiliate_id' then c.affiliate_id
-                   when 'product_name' then c.product_name   when 'ad_name' then c.ad_name
-                   when 'campaign' then c.campaign           when 'status' then c.status
-                   when 'pay_status' then c.pay_status       when 'device' then c.device
-                   when 'os' then c.os                       when 'reward_rate' then c.reward_rate
-                   when 'order_id' then c.order_id           when 'first_referrer' then c.first_referrer
-       end end) asc nulls last,
-    (case when p_dir = 'desc' then
-       case p_sort when 'advertiser_id' then c.advertiser_id when 'affiliate_id' then c.affiliate_id
-                   when 'product_name' then c.product_name   when 'ad_name' then c.ad_name
-                   when 'campaign' then c.campaign           when 'status' then c.status
-                   when 'pay_status' then c.pay_status       when 'device' then c.device
-                   when 'os' then c.os                       when 'reward_rate' then c.reward_rate
-                   when 'order_id' then c.order_id           when 'first_referrer' then c.first_referrer
-       end end) desc nulls last
-  limit greatest(p_limit, 1) offset greatest(p_offset, 0)
-$$;
+) language plpgsql security invoker stable as $fn$
+declare
+  -- 空配列は「全部外した」なので、どれにも当たらない値にしておく
+  st  text[] := case when p_statuses    is null then null when array_length(p_statuses,1)    is null then array['__afd_none__'] else p_statuses end;
+  adv text[] := case when p_advertisers is null then null when array_length(p_advertisers,1) is null then array['__afd_none__'] else p_advertisers end;
+  aff text[] := case when p_affiliates  is null then null when array_length(p_affiliates,1)  is null then array['__afd_none__'] else p_affiliates end;
+  -- 列フィルタの配列は、ここで1回だけ作る（行ごとに作らせない）
+  f1 text[] := public.jsonb_pick(p_filters, 'status');
+  f2 text[] := public.jsonb_pick(p_filters, 'advertiser_id');
+  f3 text[] := public.jsonb_pick(p_filters, 'affiliate_id');
+  f4 text[] := public.jsonb_pick(p_filters, 'product_name');
+  f5 text[] := public.jsonb_pick(p_filters, 'ad_name');
+  f6 text[] := public.jsonb_pick(p_filters, 'campaign');
+  f7 text[] := public.jsonb_pick(p_filters, 'reward_rate');
+  f8 text[] := public.jsonb_pick(p_filters, 'pay_status');
+  f9 text[] := public.jsonb_pick(p_filters, 'device');
+  f10 text[] := public.jsonb_pick(p_filters, 'os');
+  w text := public.dash_conv_where();
+  v_total bigint;
+  v_sort text;
+  v_dir text;
+begin
+  -- 件数は別に数える。本体と join しないので、ただの集計で済む。
+  execute 'select count(*) from public.conversions c where ' || w
+    into v_total
+    using p_from, p_to, st, adv, aff, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, p_search;
 
--- 値の候補も同じ直し方をする
+  -- 並べ替えの列は、この一覧にあるものだけ。無ければ発生日時に落とす。
+  v_sort := case p_sort
+    when 'advertiser_id'  then 'c.advertiser_id'
+    when 'affiliate_id'   then 'c.affiliate_id'
+    when 'product_name'   then 'c.product_name'
+    when 'ad_name'        then 'c.ad_name'
+    when 'campaign'       then 'c.campaign'
+    when 'status'         then 'c.status'
+    when 'pay_status'     then 'c.pay_status'
+    when 'device'         then 'c.device'
+    when 'os'             then 'c.os'
+    when 'reward_rate'    then 'c.reward_rate'
+    when 'order_id'       then 'c.order_id'
+    when 'first_referrer' then 'c.first_referrer'
+    when 'qty'            then 'c.qty'
+    when 'sale_price'     then 'c.sale_price'
+    when 'reward'         then 'c.reward'
+    else 'c.occurred_at'
+  end;
+  v_dir := case when lower(coalesce(p_dir, 'desc')) = 'asc' then 'asc' else 'desc' end;
+
+  -- format() は使わない。絞り込みの文に ilike の % が入っていて、
+  -- 書式指定と誤解されるため。つなぎ合わせだけにする。
+  return query execute
+    'select c.order_id, c.occurred_at, c.advertiser_id, c.affiliate_id,
+            c.product_name, c.ad_name, c.campaign, c.qty, c.sale_price,
+            c.reward, c.reward_rate, c.status, c.pay_status,
+            c.device, c.os, c.first_referrer, ' || v_total::text || '::bigint
+     from public.conversions c
+     where ' || w || '
+     order by ' || v_sort || ' ' || v_dir || ' nulls last
+     limit $17 offset $18'
+    using p_from, p_to, st, adv, aff, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, p_search,
+          greatest(p_limit, 1), greatest(p_offset, 0);
+end
+$fn$;
+
+-- 列フィルタに出す「値の候補」。
+-- 自分の列の絞り込みは外す（外さないと、いま選んでいる値しか出てこない）。
 create or replace function public.dash_conversion_values(
   p_from date,
   p_to date,
@@ -722,63 +721,51 @@ create or replace function public.dash_conversion_values(
   p_search text default null,
   p_filters jsonb default null,
   p_limit integer default 500
-) returns table(value text, n bigint) language sql security invoker stable as $$
-  -- 自分の列の絞り込みは外す（外すと候補が減らない＝表計算ソフトと同じ）
-  with fl as materialized (
-    select
-      public.jsonb_pick(f, 'status')        as f_status,
-      public.jsonb_pick(f, 'advertiser_id') as f_adv,
-      public.jsonb_pick(f, 'affiliate_id')  as f_aff,
-      public.jsonb_pick(f, 'product_name')  as f_prod,
-      public.jsonb_pick(f, 'ad_name')       as f_ad,
-      public.jsonb_pick(f, 'campaign')      as f_camp,
-      public.jsonb_pick(f, 'reward_rate')   as f_rate,
-      public.jsonb_pick(f, 'pay_status')    as f_pay,
-      public.jsonb_pick(f, 'device')        as f_dev,
-      public.jsonb_pick(f, 'os')            as f_os
-    from (select coalesce(p_filters, '{}'::jsonb) - p_col as f) s
-  )
-  select
-    coalesce(nullif(case p_col
-      when 'status'        then c.status
-      when 'advertiser_id' then c.advertiser_id
-      when 'affiliate_id'  then c.affiliate_id
-      when 'product_name'  then c.product_name
-      when 'ad_name'       then c.ad_name
-      when 'campaign'      then c.campaign
-      when 'reward_rate'   then c.reward_rate
-      when 'pay_status'    then c.pay_status
-      when 'device'        then c.device
-      when 'os'            then c.os
-    end, ''), '(なし)') as value,
-    count(*) as n
-  from public.conversions c cross join fl
-  where c.occurred_at >= public.jst_start(p_from)
-    and c.occurred_at <  public.jst_start(p_to + 1)
-    and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
-    and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
-    and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
-    and (fl.f_status is null or c.status        = any(fl.f_status))
-    and (fl.f_adv    is null or c.advertiser_id = any(fl.f_adv))
-    and (fl.f_aff    is null or c.affiliate_id  = any(fl.f_aff))
-    and (fl.f_prod   is null or c.product_name  = any(fl.f_prod))
-    and (fl.f_ad     is null or c.ad_name       = any(fl.f_ad))
-    and (fl.f_camp   is null or c.campaign      = any(fl.f_camp))
-    and (fl.f_rate   is null or c.reward_rate   = any(fl.f_rate))
-    and (fl.f_pay    is null or c.pay_status    = any(fl.f_pay))
-    and (fl.f_dev    is null or c.device        = any(fl.f_dev))
-    and (fl.f_os     is null or c.os            = any(fl.f_os))
-    and (p_search is null or p_search = ''
-         or c.product_name   ilike '%' || p_search || '%'
-         or c.ad_name        ilike '%' || p_search || '%'
-         or c.affiliate_id   ilike '%' || p_search || '%'
-         or c.campaign       ilike '%' || p_search || '%'
-         or c.order_id       ilike '%' || p_search || '%'
-         or c.first_referrer ilike '%' || p_search || '%')
-  group by 1
-  order by 2 desc, 1
-  limit greatest(p_limit, 1)
-$$;
+) returns table(value text, n bigint) language plpgsql security invoker stable as $fn$
+declare
+  st  text[] := case when p_statuses    is null then null when array_length(p_statuses,1)    is null then array['__afd_none__'] else p_statuses end;
+  adv text[] := case when p_advertisers is null then null when array_length(p_advertisers,1) is null then array['__afd_none__'] else p_advertisers end;
+  aff text[] := case when p_affiliates  is null then null when array_length(p_affiliates,1)  is null then array['__afd_none__'] else p_affiliates end;
+  ff jsonb := coalesce(p_filters, '{}'::jsonb) - p_col;
+  f1 text[] := public.jsonb_pick(ff, 'status');
+  f2 text[] := public.jsonb_pick(ff, 'advertiser_id');
+  f3 text[] := public.jsonb_pick(ff, 'affiliate_id');
+  f4 text[] := public.jsonb_pick(ff, 'product_name');
+  f5 text[] := public.jsonb_pick(ff, 'ad_name');
+  f6 text[] := public.jsonb_pick(ff, 'campaign');
+  f7 text[] := public.jsonb_pick(ff, 'reward_rate');
+  f8 text[] := public.jsonb_pick(ff, 'pay_status');
+  f9 text[] := public.jsonb_pick(ff, 'device');
+  f10 text[] := public.jsonb_pick(ff, 'os');
+  w text := public.dash_conv_where();
+  v_col text;
+begin
+  v_col := case p_col
+    when 'status'        then 'c.status'
+    when 'advertiser_id' then 'c.advertiser_id'
+    when 'affiliate_id'  then 'c.affiliate_id'
+    when 'product_name'  then 'c.product_name'
+    when 'ad_name'       then 'c.ad_name'
+    when 'campaign'      then 'c.campaign'
+    when 'reward_rate'   then 'c.reward_rate'
+    when 'pay_status'    then 'c.pay_status'
+    when 'device'        then 'c.device'
+    when 'os'            then 'c.os'
+    else null
+  end;
+  if v_col is null then return; end if;
+
+  return query execute
+    'select coalesce(nullif(' || v_col || ', ''''), ''(なし)'') as value, count(*) as n
+     from public.conversions c
+     where ' || w || '
+     group by 1
+     order by 2 desc, 1
+     limit $17'
+    using p_from, p_to, st, adv, aff, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, p_search,
+          greatest(p_limit, 1);
+end
+$fn$;
 
 
 

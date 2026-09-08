@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081008';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081017';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -69,10 +69,24 @@ export function onAuthChange(handler) {
 
 // ---- RPC ラッパ --------------------------------------------------------
 
-async function rpc(name, args) {
+// タイムアウトはたいてい一時的なもの（無料プランの小さいインスタンスが
+// 立ち上がりきっていない、直前の重い問い合わせが詰まっている、など）。
+// 中身を変えない読み取りなので、少し待って1回だけやり直す。
+const TIMEOUT_HINT = /statement timeout|timeout|57014|upstream|fetch failed|Failed to fetch/i;
+const RETRY_WAIT = 1200;
+
+async function rpc(name, args, retry = true) {
   const { data, error } = await sb().rpc(name, args);
-  if (error) throw new Error(`${name}: ${error.message}`);
-  return data;
+  if (!error) return data;
+
+  if (retry && TIMEOUT_HINT.test(error.message || '')) {
+    await new Promise((r) => setTimeout(r, RETRY_WAIT));
+    return rpc(name, args, false);
+  }
+  const timedOut = /statement timeout|57014/i.test(error.message || '');
+  throw new Error(timedOut
+    ? `${name}: 応答が間に合いませんでした（時間がかかりすぎ）。期間を短くするか、少し待ってから開き直してください。`
+    : `${name}: ${error.message}`);
 }
 
 // フィルタ条件をまとめて RPC 引数に変換する。

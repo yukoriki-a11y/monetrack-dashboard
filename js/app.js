@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081008';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081008';
-import * as ch from './charts.js?v=202609081008';
-import { renderTable, resetSort } from './table.js?v=202609081008';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081008';
-import { dayKind, holidayName } from './holiday.js?v=202609081008';
-import * as cfg from './settings.js?v=202609081008';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081017';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081017';
+import * as ch from './charts.js?v=202609081017';
+import { renderTable, resetSort } from './table.js?v=202609081017';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081017';
+import { dayKind, holidayName } from './holiday.js?v=202609081017';
+import * as cfg from './settings.js?v=202609081017';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -383,6 +383,7 @@ function wireViewControls() {
   wirePickView('cmp', state.compare);
 
   // 比較
+  segClick('#vs-count', 'vscount', (v) => { setVersusPanes(Number(v)); });
   segClick('#vs-layout', 'vslayout', (v) => { state.versus.layout = v; });
   segClick('#vs-mode', 'vsmode', (v) => { state.versus.mode = v; });
   segClick('#vs-metric', 'vsmetric', (v) => { state.versus.metric = v; });
@@ -1675,12 +1676,32 @@ function rankDayWidget(rows, metric) {
 
 const VS_PIE = 10;
 const VS_RANK_ROWS = 12;
+const VS_MAX_PANES = 5;
+
+// 枠の数を変える。いま入っている選択はそのまま残す。
+function setVersusPanes(n) {
+  const v = state.versus;
+  const want = Math.max(2, Math.min(n, VS_MAX_PANES));
+  while (v.panes.length < want) v.panes.push({ dim: 'affiliate', picked: [], data: null });
+  v.panes.length = want;
+}
 
 async function renderVersus() {
   const v = state.versus;
   const metric = CMP_METRIC[v.metric];
   const panes = $('#vs-panes');
-  panes.classList.toggle('is-col', v.layout === 'col');
+  const n = v.panes.length;
+
+  // 左右なら横に n 枚、上下なら縦に n 枚。
+  // 4枚以上を横一列にすると1枚が細すぎるので、その場合だけ2段に折る。
+  if (v.layout === 'col') {
+    panes.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    panes.style.gridTemplateRows = `repeat(${n}, minmax(0, 1fr))`;
+  } else {
+    const across = n >= 4 ? Math.ceil(n / 2) : n;
+    panes.style.gridTemplateColumns = `repeat(${across}, minmax(0, 1fr))`;
+    panes.style.gridTemplateRows = `repeat(${Math.ceil(n / across)}, minmax(0, 1fr))`;
+  }
 
   // 枠ごとの候補（軸が同じなら1回で済ませる）
   const need = [...new Set(v.panes.map((p) => p.dim))];
@@ -1692,7 +1713,10 @@ async function renderVersus() {
     if (!p.picked.length && lists[p.dim]?.length) p.picked = [lists[p.dim][i]?.label || lists[p.dim][0].label];
   });
 
-  const data = await Promise.all(v.panes.map((p) => loadVersusPane(p, v)));
+  // 枠の数だけ問い合わせが増えるので、まとめて投げずに順に取る
+  // （小さいインスタンスだと一斉に投げた側から詰まる）
+  const data = [];
+  for (const p of v.panes) data.push(await loadVersusPane(p, v));
   v.panes.forEach((p, i) => { p.data = data[i]; });
 
   // グラフは canvas を DOM に入れてから描く
@@ -1914,7 +1938,10 @@ async function renderDetail() {
 
 // 成果明細は画面に出ている100件だけでなく、条件に合う全件を出す。
 // 1回で取ると重いので、ページ送りしながら集める。
-const CSV_PAGE = 1000;
+// 小さいインスタンスなので、まとめて投げると後続が詰まってタイムアウトする。
+// 1回あたりを軽くして、間にひと呼吸置く。
+const CSV_PAGE = 500;
+const CSV_GAP = 120;
 
 async function fetchAllConversions() {
   const d = state.detail;
@@ -1926,8 +1953,9 @@ async function fetchAllConversions() {
     if (!rows.length) break;
     total = Number(rows[0].total_count) || rows.length;
     out.push(...rows);
-    if (rows.length < CSV_PAGE) break;
-    if (out.length < total) toast(`CSVを作成中… ${num(out.length)} / ${num(total)} 件`);
+    if (rows.length < CSV_PAGE || out.length >= total) break;
+    toast(`CSVを作成中… ${num(out.length)} / ${num(total)} 件`);
+    await new Promise((r) => setTimeout(r, CSV_GAP));
   }
   return out;
 }

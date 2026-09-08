@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080937';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080937';
-import * as ch from './charts.js?v=202609080937';
-import { renderTable, resetSort } from './table.js?v=202609080937';
-import { initImporter, loadImportHistory } from './importer.js?v=202609080937';
-import { dayKind, holidayName } from './holiday.js?v=202609080937';
-import * as cfg from './settings.js?v=202609080937';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609080951';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609080951';
+import * as ch from './charts.js?v=202609080951';
+import { renderTable, resetSort } from './table.js?v=202609080951';
+import { initImporter, loadImportHistory } from './importer.js?v=202609080951';
+import { dayKind, holidayName } from './holiday.js?v=202609080951';
+import * as cfg from './settings.js?v=202609080951';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -799,9 +799,28 @@ function setRange(from, to) {
 
 // ---- 描画の入口 --------------------------------------------------------
 
+// いまの条件を人が読める形で書き出す。空っぽの画面の理由を説明するのに使う。
+function filterSummaryText() {
+  const f = state.filter;
+  const bits = [`${f.from} 〜 ${f.to}`];
+  const part = (label, v) => {
+    if (v === null || v === undefined) return;
+    bits.push(v.length ? `${label} ${v.length}件` : `${label} なし`);
+  };
+  part('ステータス', f.statuses);
+  part('広告主', f.advertisers);
+  part('アフィリエイター', f.affiliates);
+  return bits.join(' / ');
+}
+
 async function render() {
   if (state.view === 'import') { loadImportHistory(); return; }
-  if (!state.filter.from || !state.filter.to) return;
+  // 期間が決まっていないと問い合わせようがない。黙って戻ると
+  // 「何も出てこない」画面になるので、理由を出しておく。
+  if (!state.filter.from || !state.filter.to) {
+    if (state.view === 'detail') showDetailEmpty('期間を選んでください');
+    return;
+  }
 
   busy(true);
   try {
@@ -815,9 +834,24 @@ async function render() {
   } catch (e) {
     toast(e.message);
     console.error(e);
+    // 失敗したまま前の中身が残る／空のままになるのを避ける
+    if (state.view === 'detail') showDetailEmpty('読み込めませんでした: ' + e.message);
   } finally {
     busy(false);
   }
+}
+
+// 成果明細を、理由つきの空表示にする
+function showDetailEmpty(reason) {
+  const table = $('#t-detail');
+  table.replaceChildren(el('tbody', {}, el('tr', {},
+    el('td', { class: 'empty' },
+      el('div', { text: reason }),
+      el('div', { class: 'muted small', text: 'いまの条件: ' + filterSummaryText() })))));
+  $('#detail-count').textContent = '';
+  $('#detail-page').textContent = '';
+  $('#detail-prev').disabled = true;
+  $('#detail-next').disabled = true;
 }
 
 // ---- サマリー ----------------------------------------------------------
@@ -1442,6 +1476,11 @@ async function renderRank() {
   dims.forEach((d, i) => { r.data[d] = results[i]; });
   const dayRows = parts.some((p) => p.key === 'daily') ? results[dims.length] : null;
 
+  // 期間まるごとの枠を上の段に横並びにし、日別を下の段いっぱいに置く。
+  // 出している枚数ぶんだけ列を作る（auto-fit だと空き列ができてしまう）。
+  const across = Math.max(parts.filter((p) => p.key !== 'daily').length, 1);
+  box.style.gridTemplateColumns = `repeat(${across}, minmax(0, 1fr))`;
+
   box.replaceChildren(...parts.map((p) => (p.key === 'daily'
     ? rankDayWidget(dayRows, metric)
     : rankWidget(p, r.data[p.key] || [], metric))));
@@ -1618,7 +1657,7 @@ function rankDayWidget(rows, metric) {
   // 直近が見えている状態で開きたいので右端に寄せる
   requestAnimationFrame(() => { wrap.scrollLeft = wrap.scrollWidth; });
 
-  return el('section', { class: 'rank-card' },
+  return el('section', { class: 'rank-card is-daily' },
     el('header', { class: 'eb-head' },
       el('h3', { text: `日別 ${metric.label}ランキング` }),
       dimSeg,
@@ -1817,6 +1856,15 @@ async function renderDetail() {
   const rows = await api.conversions(state.filter, d.search, d.size, d.page * d.size);
   d.rows = rows;
   d.total = rows.length ? Number(rows[0].total_count) : 0;
+
+  // 0件のときは、条件のどこが効いているのかまで出す。
+  // （クリックしか無い月を選んでいる、が一番よくある）
+  if (!rows.length) {
+    showDetailEmpty(d.search
+      ? `「${d.search}」に当てはまる成果がありません`
+      : 'この条件に当てはまる成果がありません');
+    return;
+  }
 
   $('#detail-count').textContent = `${num(d.total)} 件中 ${d.total ? d.page * d.size + 1 : 0}〜${d.page * d.size + rows.length} 件を表示`;
   const pages = Math.max(Math.ceil(d.total / d.size), 1);

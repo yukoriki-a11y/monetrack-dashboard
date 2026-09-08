@@ -595,19 +595,25 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
   padding: 10px 12px 12px;
   display: grid;
   gap: 8px;
+  /* かたまりごとに重なりの土俵を分ける。
+     これが無いと、日別明細の左に固定した列（z-index 4）が
+     見出しより手前に来て、名前の上を数字が流れていってしまう。 */
+  isolation: isolate;
 }
 .eb-head {
   display: flex;
   align-items: baseline;
   gap: 12px;
   flex-wrap: wrap;
-  /* 相手を追いながらスクロールできるよう、名前だけ上に残す */
+  /* 相手を追いながらスクロールできるよう、名前だけ上に残す。
+     中の表の固定列より手前に置く（上の isolation とセット）。 */
   position: sticky;
   top: -10px;
-  z-index: 2;
+  z-index: 6;
   margin: -10px -12px 0;
   padding: 10px 12px 6px;
   background: var(--panel-2);
+  box-shadow: 0 6px 8px -8px rgba(16, 24, 40, .5);
 }
 .eb-head h3 { font-size: 14px; color: var(--ink); }
 .eb-stats { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
@@ -653,18 +659,38 @@ table.mini tbody tr:nth-child(odd) { background: var(--panel-2); }
 table.mini tbody tr:hover { background: var(--panel-3); }
 table.mini td.trunc { max-width: 150px; }
 
-/* ランキング: 何枚かのランキングを縦に並べてスクロールする */
+/* ランキング: 俯瞰したいので、ページはスクロールさせず1画面に収める。
+   上の段に「期間まるごと」の順位を横並び、下の段に日別。
+   長い表はそれぞれの枠の中だけでスクロールさせる。 */
 .v-rank { grid-template-rows: minmax(0, 1fr); }
+
+.rank-grid {
+  display: grid;
+  gap: var(--gap);
+  min-height: 0;
+  overflow: hidden;
+  /* 列数は出している枚数に合わせて JS が入れる */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+}
+/* 日別は日付を横に伸ばすので、常に幅いっぱい */
+.rank-card.is-daily { grid-column: 1 / -1; }
 
 .rank-card {
   background: var(--panel-2);
   border-radius: var(--radius);
   padding: 10px 12px 12px;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
+  min-height: 0;
+  min-width: 0;
+  isolation: isolate;
 }
-.rank-card .table-wrap { max-height: 420px; background: var(--panel); }
-.rank-card .eb-head { background: var(--panel-2); }
+.rank-card .table-wrap { background: var(--panel); min-height: 0; }
+.rank-card .eb-head { background: var(--panel-2); position: static; margin: 0; padding: 0; box-shadow: none; }
+.rank-card .eb-head h3 { font-size: 12.5px; }
+.rank-card .matrix-wrap { overflow: auto; min-height: 0; }
 
 table.rank-table { font-size: 12px; }
 table.rank-table thead th { background: var(--panel-3); }
@@ -1008,12 +1034,14 @@ td.trunc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-sp
   .tab span { display: inline; }
   .tab { padding: 8px 10px; }
   #main { overflow: visible; }
-  .view, .grid-2 {
+  .view, .grid-2, .rank-grid, .vs-panes {
     height: auto;
     grid-template-columns: minmax(0, 1fr) !important;
     grid-template-rows: none !important;
     grid-auto-rows: auto;
   }
+  .rank-grid { overflow: visible; }
+  .rank-card .table-wrap { max-height: 360px; }
   .span2, .span3 { grid-column: span 1; }
   .card { grid-template-rows: none; }
   .chart-wrap { height: 240px; }

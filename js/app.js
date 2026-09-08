@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609081436';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081436';
-import * as ch from './charts.js?v=202609081436';
-import { renderTable, resetSort } from './table.js?v=202609081436';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081436';
-import { dayKind, holidayName } from './holiday.js?v=202609081436';
-import * as cfg from './settings.js?v=202609081436';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609081452';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081452';
+import * as ch from './charts.js?v=202609081452';
+import { renderTable, resetSort } from './table.js?v=202609081452';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081452';
+import { dayKind, holidayName } from './holiday.js?v=202609081452';
+import * as cfg from './settings.js?v=202609081452';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -239,9 +239,20 @@ function wireTabs() {
   });
 }
 
+// その画面で出していない絞り込みは、値が残っていても効かせない。
+// 例: アフィリエイターの画面から名前を押してランキングへ移ると、
+//     引き継いだ「bpr530だけ」がそのまま残り、1人しか出ない状態になっていた。
+//     ランキングは絞り込みを出さない画面なので、ここで外す。
+function clearHiddenPickers(f, view) {
+  for (const kind of pickerOff(view)) {
+    f[kind === 'advertiser' ? 'advertisers' : 'affiliates'] = null;
+  }
+}
+
 function switchView(view) {
   state.view = view;
   state.filter = filterFor(view);
+  clearHiddenPickers(state.filter, view);
   ch.hideTooltip();     // 出しっぱなしの内訳ツールチップを畳む
 
   $$('.tab[data-view]').forEach((t) => t.classList.toggle('is-active', t.dataset.view === view));
@@ -282,6 +293,7 @@ function filterFor(view) {
         affiliates: copy(base.affiliates),
       }
       : newFilter();
+    clearHiddenPickers(f, view);
     // [] は「ひとつも選んでいない」の意味（null=全部 とは区別している）
     const key = START_EMPTY[view];
     if (key) f[key] = [];
@@ -457,9 +469,14 @@ function wireViewControls() {
     resetSort($('#t-detail'));
     renderDetail();
   });
-  $('#detail-clear-filters').addEventListener('click', () => {
-    state.detail.colFilters = {};
-    state.detail.page = 0;
+  // 列フィルタ・並べ替え・検索を、まとめて既定に戻す
+  $('#detail-reset').addEventListener('click', () => {
+    const d = state.detail;
+    d.colFilters = {};
+    d.sort = { ...DETAIL_DEFAULT_SORT };
+    d.search = '';
+    d.page = 0;
+    $('#detail-search').value = '';
     renderDetail();
   });
   $('#detail-prev').addEventListener('click', () => {
@@ -1490,6 +1507,31 @@ function pieParts(rows, valueKey = 'sales', limit = PIE_SLICES) {
   return { labels, values };
 }
 
+// グラフの凡例を HTML で作る。
+// Chart.js が描く凡例は canvas の中の絵なので、名前を押せない。
+// 色の四角＝出し入れ、名前＝その相手のページへ、と役割を分けてある。
+function chartLegend(canvasId, series, kind, hiddenSet) {
+  return el('ul', { class: 'chart-legend' }, ...series.map((s, i) => {
+    const dot = el('button', {
+      type: 'button',
+      class: `lg-dot${hiddenSet.has(s.label) ? ' is-off' : ''}`,
+      title: hiddenSet.has(s.label) ? 'クリックで表示' : 'クリックで非表示',
+      'aria-label': `${s.label} の表示を切り替える`,
+    });
+    dot.style.background = s.color || ch.color(i);
+    dot.addEventListener('click', () => {
+      const off = !hiddenSet.has(s.label);
+      if (off) hiddenSet.add(s.label);
+      else hiddenSet.delete(s.label);
+      dot.classList.toggle('is-off', off);
+      dot.title = off ? 'クリックで表示' : 'クリックで非表示';
+      ch.toggleSeries(canvasId, i, off);
+    });
+    return el('li', { class: hiddenSet.has(s.label) ? 'is-off' : null },
+      dot, el('span', { class: 'nm trunc', title: s.label }, nameNode(kind, s.label)));
+  }));
+}
+
 // kind を渡すと、名前がクリック/ホバーできるようになる（商品には渡さない）
 function miniTable(head, rows, fmt, kind = null) {
   return el('table', { class: 'mini' },
@@ -1514,26 +1556,24 @@ function drawEntityPart(kind, id, part, cell, data) {
       cell.replaceChildren(el('p', { class: 'muted small', text: 'データなし' }));
       return;
     }
+    // 凡例は Chart.js に描かせず、自分で HTML にする。
+    // そうしないと名前を押せない（canvas の中の絵になってしまう）。
     const cid = `c-${kind}-${part}-${safeId}`;
-    const wrap = el('div', { class: 'chart-wrap' }, el('canvas', { id: cid }));
-
-    if (part === 'referrer') {
-      // 流入元はサイトを見に行きたいので、開けるリンクも並べる
-      const total = values.reduce((a, v) => a + v, 0);
-      cell.replaceChildren(wrap,
-        el('ul', { class: 'ref-links' }, ...labels.map((host, i) => {
-          const share = total ? ((values[i] / total) * 100).toFixed(1) : '0.0';
-          const sw = el('i');
-          sw.style.background = ch.color(i);
-          return el('li', {}, sw,
-            el('span', { class: 'nm trunc' },
-              host === 'その他' ? host : hostLink(host)),
-            el('span', { class: 'vl', text: `${share}%` }));
-        })));
-    } else {
-      cell.replaceChildren(wrap);
-    }
-    ch.pie(cid, labels, values);
+    const total = values.reduce((a, v) => a + v, 0);
+    cell.replaceChildren(
+      el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })),
+      el('ul', { class: 'ref-links' }, ...labels.map((label, i) => {
+        const share = total ? ((values[i] / total) * 100).toFixed(1) : '0.0';
+        const sw = el('i');
+        sw.style.background = ch.color(i);
+        return el('li', {}, sw,
+          el('span', { class: 'nm trunc', title: label },
+            label === 'その他' ? label
+              : (part === 'referrer' ? hostLink(label) : nameNode(other, label))),
+          el('span', { class: 'vl', text: `${share}%` }));
+      })),
+    );
+    ch.pie(cid, labels, values, { legend: false });
     return;
   }
 
@@ -1562,14 +1602,11 @@ function drawEntityPart(kind, id, part, cell, data) {
     // 凡例をクリックすると出し入れでき、マウスを当てると円グラフで割合が出る。
     if (data.bands?.length) {
       const { labels, series } = bandSeries(data.bands, st.grain, st.hiddenBands);
-      ch.area(cid, labels, series, {
-        money: true,
-        filled: st.filled,
-        onLegend: (name, nowHidden) => {
-          if (nowHidden) st.hiddenBands.add(name);
-          else st.hiddenBands.delete(name);
-        },
-      });
+      cell.replaceChildren(
+        el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })),
+        chartLegend(cid, series, other, st.hiddenBands),
+      );
+      ch.area(cid, labels, series, { money: true, filled: st.filled, legend: false });
       return;
     }
     // 内訳が無い相手は、その人ぶんの合計だけを線で出す
@@ -1676,7 +1713,13 @@ async function showEntityCard(anchor) {
       const scope = kind === 'advertiser' ? { advertisers: [name] } : { affiliates: [name] };
       // 期間だけ差し替える。相手はここで指定するので、絞り込みは外しておく。
       const range = { ...f, from, to, advertisers: null, affiliates: null };
-      data = await api.timeseries(range, 'month', scope);
+      const other = OTHER[kind];
+      const [months, mix] = await Promise.all([
+        api.timeseries(range, 'month', scope),
+        // 内訳の円グラフ用（広告主なら誰が、アフィリエイターならどこで）
+        api.dimension(range, other, 6, null, scope, 'sales'),
+      ]);
+      data = { months, mix };
       entCache.set(ck, data);
     } catch (err) {
       if (entCard === card) card.replaceChildren(card.firstChild,
@@ -1689,7 +1732,7 @@ async function showEntityCard(anchor) {
   // 月ごとの3行だけ出す。想定より細かい粒度が返ってきても崩れないように、
   // 月でまとめ直してから後ろ3つを取る。
   const byMonth = new Map();
-  for (const m of data || []) {
+  for (const m of data.months || []) {
     const k = String(m.bucket).slice(0, 7);
     const cur = byMonth.get(k) || { bucket: k, sales: 0, conversions: 0, reward: 0, clicks: 0 };
     cur.sales += Number(m.sales || 0);
@@ -1706,30 +1749,51 @@ async function showEntityCard(anchor) {
   const cv = sum('conversions');
   const clicks = sum('clicks');
   const cvr = clicks ? (cv / clicks) * 100 : null;
-  const peak = Math.max(1, ...months.map((m) => Number(m.sales || 0)));
+
+  // 内訳の円グラフ（上位5件＋その他）
+  const otherLabel = LIST_LABEL[OTHER[kind]];
+  const mix = (data.mix || []).slice(0, 5);
+  const mixTotal = (data.mix || []).reduce((a, r) => a + Number(r.sales || 0), 0);
+  const shown = mix.reduce((a, r) => a + Number(r.sales || 0), 0);
+  const parts = mix.map((r, i) => ({ value: Number(r.sales || 0), color: ch.color(i) }));
+  if (mixTotal - shown > 0) parts.push({ value: mixTotal - shown, color: ch.color(mix.length) });
+
+  // 月別の縦棒。数字を並べるより、伸びているか落ちているかが一目で分かる。
+  const barsBox = el('div', { class: 'ec-bars' });
+  barsBox.innerHTML = ch.barsSvg(months.map((m) => ({ label: m.bucket.slice(5), value: m.sales })));
+
+  const donutBox = el('div', { class: 'ec-donut' });
+  donutBox.innerHTML = ch.donutSvg(parts, 76);
 
   card.replaceChildren(
     el('div', { class: 'ec-head' },
       el('b', { text: name }),
       el('span', { class: 'muted small', text: ENT_LABEL[kind] })),
     el('div', { class: 'ec-period muted small', text: `${from} 〜 ${to}（直近3カ月）` }),
-    el('dl', { class: 'ec-stats' },
-      el('dt', { text: '売上' }), el('dd', { text: yen(sales) }),
-      el('dt', { text: '成果' }), el('dd', { text: num(cv) + ' 件' }),
-      el('dt', { text: '報酬' }), el('dd', { text: yen(sum('reward')) }),
-      el('dt', { text: 'クリック' }), el('dd', { text: clicks ? num(clicks) : '—' }),
-      el('dt', { text: 'CVR' }), el('dd', { text: cvr === null ? '—' : pct(cvr) })),
+
+    el('div', { class: 'ec-total' },
+      el('b', { text: yen(sales) }),
+      el('span', { class: 'muted small', text: `成果 ${num(cv)}件 / CVR ${cvr === null ? '—' : pct(cvr)}` })),
+
     months.length
-      ? el('ul', { class: 'ec-months' }, ...months.map((m) => {
-        const v = Number(m.sales || 0);
-        const bar = el('i');
-        bar.style.width = `${(v / peak) * 100}%`;
-        return el('li', {},
-          el('span', { class: 'mo', text: m.bucket }),
-          el('span', { class: 'bar' }, bar),
-          el('span', { class: 'vl', text: '¥' + compact(v) }));
-      }))
+      ? el('div', { class: 'ec-sec' },
+        el('div', { class: 'ec-cap muted small', text: '月別の売上' }), barsBox)
       : el('p', { class: 'muted small', text: 'この期間の成果はありません' }),
+
+    parts.length
+      ? el('div', { class: 'ec-sec' },
+        el('div', { class: 'ec-cap muted small', text: `${otherLabel}別の内訳` }),
+        el('div', { class: 'ec-mix' }, donutBox,
+          el('ul', {}, ...mix.map((r, i) => {
+            const sw = el('i');
+            sw.style.background = ch.color(i);
+            const share = mixTotal ? ((Number(r.sales || 0) / mixTotal) * 100).toFixed(0) : '0';
+            return el('li', {}, sw,
+              el('span', { class: 'nm trunc', text: r.label, title: r.label }),
+              el('span', { class: 'vl', text: `${share}%` }));
+          }))))
+      : null,
+
     el('div', { class: 'ec-foot muted small', text: 'クリックでこの相手のページへ' }),
   );
   placeAt(card, anchor);
@@ -1750,8 +1814,9 @@ const RANK_PARTS = [
   { key: 'product',    label: '商品' },
 ];
 
-const RANK_ROWS = 30;        // 表に出す順位の数
-const RANK_BARS = 12;        // 棒グラフに出す本数
+const RANK_ROWS = 100;       // 表に出す順位の数
+const RANK_BARS = 100;       // 棒グラフに出す本数（枠の中を縦にスクロールして見る）
+const RANK_BAR_H = 18;       // 棒1本ぶんの高さ。本数ぶん背を伸ばして読めるようにする
 const RANK_DAY_SERIES = 12;  // 日別で追いかける相手の数
 const RANK_DAY_TOP = 10;     // 日別で1日あたりに出す順位の数（画面いっぱい使えるので多め）
 
@@ -1836,8 +1901,13 @@ function rankBarWidget(part, rows, metric, draws) {
     .slice(0, RANK_BARS);
   const cid = `c-rank-${part.key}`;
 
+  // 100本を枠の高さに押し込むと潰れて読めないので、本数ぶん背を伸ばして
+  // 枠の中を縦にスクロールさせる。
+  const inner = el('div', { class: 'chart-wrap' }, el('canvas', { id: cid }));
+  inner.style.height = `${Math.max(200, top.length * RANK_BAR_H)}px`;
+
   const body = top.length
-    ? el('div', { class: 'chart-wrap' }, el('canvas', { id: cid }))
+    ? el('div', { class: 'rank-bars' }, inner)
     : el('p', { class: 'empty', text: 'データがありません' });
 
   if (top.length) {
@@ -1849,7 +1919,7 @@ function rankBarWidget(part, rows, metric, draws) {
   return el('section', { class: 'rank-card' },
     el('header', { class: 'eb-head' },
       el('h3', { text: `${part.label} ${metric.label}` }),
-      el('span', { class: 'eb-stats', text: `上位${Math.min(RANK_BARS, top.length)}` })),
+      el('span', { class: 'eb-stats', text: `上位${top.length}` })),
     body);
 }
 
@@ -2203,13 +2273,9 @@ function versusPane(index, pane, candidates, v, metric, draws) {
     const canBand = metric.key === 'sales' && pane.data.bands?.length;
     if (canBand) {
       const { labels, series } = bandSeries(pane.data.bands, v.grain, v.hiddenBands);
+      body.append(chartLegend(cid, series, other, v.hiddenBands));
       draws.push(() => ch.area(cid, labels, series, {
-        money: true,
-        filled: v.filled,
-        onLegend: (nm, nowHidden) => {
-          if (nowHidden) v.hiddenBands.add(nm);
-          else v.hiddenBands.delete(nm);
-        },
+        money: true, filled: v.filled, legend: false,
       }));
     } else {
       const pts = rollup(pane.data.daily, v.grain);
@@ -2220,8 +2286,18 @@ function versusPane(index, pane, candidates, v, metric, draws) {
   } else if (v.mode === 'pie') {
     const { labels, values } = pieParts(pane.data.breakdown, metric.key, VS_PIE);
     const cid = `c-${safe}-pie`;
-    body.append(el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })));
-    draws.push(() => ch.pie(cid, labels, values));
+    const total = values.reduce((a, x) => a + x, 0);
+    body.append(el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })),
+      el('ul', { class: 'ref-links' }, ...labels.map((label, i) => {
+        const share = total ? ((values[i] / total) * 100).toFixed(1) : '0.0';
+        const sw = el('i');
+        sw.style.background = ch.color(i);
+        return el('li', {}, sw,
+          el('span', { class: 'nm trunc', title: label },
+            label === 'その他' ? label : nameNode(other, label)),
+          el('span', { class: 'vl', text: `${share}%` }));
+      })));
+    draws.push(() => ch.pie(cid, labels, values, { legend: false }));
   } else {
     const rows = pane.data.breakdown.slice()
       .sort((a, b) => Number(b[metric.key] || 0) - Number(a[metric.key] || 0))
@@ -2321,6 +2397,8 @@ function fmtMetric(v, metric) {
 
 // 見出しから絞り込める列（値の一覧を出せるもの）。
 // 発生日時や金額のように値が散らばる列は、一覧にしても選べないので入れない。
+const DETAIL_DEFAULT_SORT = { key: 'occurred_at', dir: 'desc' };
+
 const DETAIL_FILTERABLE = new Set([
   'status', 'advertiser_id', 'affiliate_id', 'product_name',
   'ad_name', 'campaign', 'reward_rate', 'pay_status', 'device', 'os',
@@ -2351,9 +2429,16 @@ async function renderDetail() {
     return;
   }
 
+  // 既定から動いているものがあるときだけ「元に戻す」を出す
   const nFilters = activeColFilters().length;
-  $('#detail-clear-filters').hidden = nFilters === 0;
-  $('#detail-clear-filters').textContent = `列の絞り込みを解除（${nFilters}列）`;
+  const sorted = d.sort.key !== DETAIL_DEFAULT_SORT.key || d.sort.dir !== DETAIL_DEFAULT_SORT.dir;
+  const changed = [];
+  if (nFilters) changed.push(`絞り込み${nFilters}列`);
+  if (sorted) changed.push('並べ替え');
+  if (d.search) changed.push('検索');
+  const reset = $('#detail-reset');
+  reset.hidden = changed.length === 0;
+  reset.textContent = `表示を元に戻す（${changed.join('・')}）`;
   $('#detail-count').textContent = `${num(d.total)} 件中 ${d.total ? d.page * d.size + 1 : 0}〜${d.page * d.size + rows.length} 件を表示`;
   const pages = Math.max(Math.ceil(d.total / d.size), 1);
   $('#detail-page').textContent = `${d.page + 1} / ${pages} ページ`;

@@ -1070,16 +1070,50 @@ ul.ref-links li {
 ul.ref-links li > i { width: 8px; height: 8px; border-radius: 2px; }
 ul.ref-links .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 ul.ref-links .vl { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-/* 円グラフと一覧を上下に分ける（一覧だけ中でスクロール） */
-.eb-cell[data-part="referrer"] .eb-body { grid-template-rows: 150px minmax(0, 1fr); }
-.eb-cell[data-part="referrer"] .chart-wrap { height: 150px; min-height: 0; }
+/* 円グラフと一覧を上下に分ける（一覧だけ中でスクロール）。
+   凡例は Chart.js ではなく下の一覧が担う（名前を押せるようにするため）。 */
+.eb-cell[data-part="referrer"] .eb-body,
+.eb-cell[data-part="pie"] .eb-body { grid-template-rows: 140px minmax(0, 1fr); }
+.eb-cell[data-part="referrer"] .chart-wrap,
+.eb-cell[data-part="pie"] .chart-wrap { height: 140px; min-height: 0; }
+
+/* グラフの下に置く自前の凡例。色＝出し入れ、名前＝その相手のページへ */
+ul.chart-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  max-height: 42px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+ul.chart-legend li { display: flex; align-items: center; gap: 5px; font-size: 11px; min-width: 0; }
+ul.chart-legend li.is-off { opacity: .45; }
+ul.chart-legend .lg-dot {
+  appearance: none;
+  border: 0;
+  width: 9px; height: 9px;
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+  box-shadow: none;
+}
+ul.chart-legend .lg-dot.is-off { box-shadow: inset 0 0 0 9px var(--panel-3); }
+ul.chart-legend .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+
+/* ランキングの棒グラフ。本数ぶん背を伸ばして、枠の中を縦にスクロールする */
+.rank-bars { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+.rank-bars .chart-wrap { min-height: 0; }
 
 /* マウスを少し置いたときに出る小さな要約 */
 .ent-card {
   position: fixed;
   z-index: 130;
   pointer-events: none;          /* 自分にマウスが乗って消えないように */
-  width: 250px;
+  width: 286px;
   background: var(--panel);
   color: var(--ink);
   border-radius: 10px;
@@ -1091,27 +1125,24 @@ ul.ref-links .vl { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .ent-card .ec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .ent-card .ec-head b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ent-card .ec-period { margin: -4px 0 0; }
-.ent-card dl.ec-stats {
-  margin: 0;
+.ent-card .ec-total { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ent-card .ec-total b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.ent-card .ec-sec { display: grid; gap: 3px; }
+.ent-card .ec-cap { letter-spacing: .02em; }
+.ent-card .ec-bars svg { display: block; }
+.ent-card .ec-mix { display: flex; align-items: center; gap: 10px; }
+.ent-card .ec-donut { flex: none; line-height: 0; }
+.ent-card .ec-mix ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; min-width: 0; flex: 1; }
+.ent-card .ec-mix li {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 1px 10px;
-  font-size: 11.5px;
-}
-.ent-card dl.ec-stats dt { color: var(--ink-3); }
-.ent-card dl.ec-stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-.ent-card ul.ec-months { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
-.ent-card ul.ec-months li {
-  display: grid;
-  grid-template-columns: 52px 1fr auto;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: 10.5px;
 }
-.ent-card ul.ec-months .mo { color: var(--ink-3); }
-.ent-card ul.ec-months .bar { background: var(--panel-3); border-radius: 3px; height: 7px; overflow: hidden; }
-.ent-card ul.ec-months .bar i { display: block; height: 100%; background: var(--ink-3); border-radius: 3px; }
-.ent-card ul.ec-months .vl { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.ent-card .ec-mix li > i { width: 8px; height: 8px; border-radius: 2px; }
+.ent-card .ec-mix .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ent-card .ec-mix .vl { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .ent-card .ec-foot { border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); padding-top: 6px; }
 
 /* ---------- 表計算ソフト風の列フィルタ ---------- */

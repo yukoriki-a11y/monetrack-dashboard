@@ -1,7 +1,7 @@
 // Chart.js の薄いラッパ。同じ canvas に描き直すときは古いインスタンスを破棄する。
 
-import { compact, num, yen } from './util.js?v=202609081436';
-import { palette, isDark } from './settings.js?v=202609081436';
+import { compact, num, yen } from './util.js?v=202609081452';
+import { palette, isDark } from './settings.js?v=202609081452';
 
 const registry = new Map();
 
@@ -143,11 +143,21 @@ function hideTip() {
 // タブを切り替えたときなど、外から消したいとき用
 export const hideTooltip = hideTip;
 
+// 自前の凡例から系列を出し入れするとき用
+export function toggleSeries(canvasId, index, hidden) {
+  const chart = registry.get(canvasId);
+  if (!chart) return;
+  chart.getDatasetMeta(index).hidden = hidden;
+  chart.update();
+}
+
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // 値の配列 → ドーナツの SVG。合計が0のときは空を返す。
-function donutSvg(parts, size = 108) {
+// ツールチップと、マウスを置いたときの小さなカードで使う。
+// 一瞬しか出ないものに Chart.js の canvas を作ると重いので、SVG を組み立てる。
+export function donutSvg(parts, size = 108) {
   const total = parts.reduce((a, p) => a + p.value, 0);
   if (!total) return '';
   const r = size / 2;
@@ -172,6 +182,32 @@ function donutSvg(parts, size = 108) {
       + ` L ${pt(a1, ir)} A ${ir} ${ir} 0 ${large} 0 ${pt(a0, ir)} Z" fill="${p.color}"/>`;
   }).join('');
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">${arcs}</svg>`;
+}
+
+// 小さな縦棒の SVG。マウスを置いたときのカードで月別を見せるのに使う。
+// points = [{ label, value }]
+export function barsSvg(points, { width = 262, height = 62, color: barColor } = {}) {
+  if (!points.length) return '';
+  const peak = Math.max(1, ...points.map((p) => Number(p.value || 0)));
+  const gap = 8;
+  const bw = Math.max(6, (width - gap * (points.length - 1)) / points.length);
+  const labelH = 13;
+  const barH = height - labelH;
+  const t = themeColors();
+
+  const bars = points.map((p, i) => {
+    const v = Number(p.value || 0);
+    const h = Math.max(2, (v / peak) * (barH - 4));
+    const x = i * (bw + gap);
+    const y = barH - h;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"`
+      + ` rx="2" fill="${barColor || color(0)}"/>`
+      + `<text x="${(x + bw / 2).toFixed(1)}" y="${height - 3}" text-anchor="middle"`
+      + ` font-size="9" fill="${t.ink2}">${esc(p.label)}</text>`;
+  }).join('');
+
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"`
+    + ` aria-hidden="true">${bars}</svg>`;
 }
 
 const TIP_LEGEND = 8;   // 円グラフの脇に名前を出す数。あとは「ほか」でまとめる
@@ -316,7 +352,10 @@ export function area(canvasId, labels, series, opts = {}) {
       plugins: {
         // 内訳はマウスを当てたときに円グラフで見せる
         tooltip: pieTooltip(fmt),
-        legend: legendPlugin(series, opts.onLegend),
+        // 凡例を自前の HTML で出す場合は消す（名前を押せるようにするため）
+        legend: opts.legend === false
+          ? { display: false }
+          : legendPlugin(series, opts.onLegend),
       },
     },
   });
@@ -432,7 +471,8 @@ export function pie(canvasId, labels, data, opts = {}) {
     options: {
       cutout: opts.cutout ?? '58%',
       plugins: {
-        legend: { position: 'right' },
+        // 凡例を自前の HTML で出す場合は消す（名前を押せるようにするため）
+        legend: opts.legend === false ? { display: false } : { position: 'right' },
         tooltip: {
           callbacks: {
             label(ctx) {

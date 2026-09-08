@@ -6,10 +6,10 @@
 // 4. 500 行ずつに分けて RPC へ送る（行レベルでも重複は弾かれる）
 // 5. 取り込み履歴に記録
 
-import { $, el, num, fmtDateTime, chunk } from './util.js?v=202609081037';
-import { api } from './db.js?v=202609081037';
-import { readFile, detectKind, parseConversions, parseClicks } from './parse.js?v=202609081037';
-import { renderTable } from './table.js?v=202609081037';
+import { $, el, num, fmtDateTime, chunk } from './util.js?v=202609081337';
+import { api } from './db.js?v=202609081337';
+import { readFile, detectKind, parseConversions, parseClicks } from './parse.js?v=202609081337';
+import { renderTable } from './table.js?v=202609081337';
 
 const CHUNK = 500;
 
@@ -61,7 +61,6 @@ async function handleFiles(files, onImported) {
 
 async function importOne(file) {
   const line = log('', `${file.name} を読み込み中…`);
-  const force = $('#import-force').checked;
 
   const { fileHash, header, rows } = await readFile(file);
 
@@ -74,7 +73,7 @@ async function importOne(file) {
 
   // まったく同じファイルは 1 件としてしか扱わない
   const check = await api.importCheck(fileHash);
-  if (check?.found && !force) {
+  if (check?.found) {
     line.className = 'warn';
     line.textContent =
       `${file.name}: 同じ内容のファイルが既に取り込まれています`

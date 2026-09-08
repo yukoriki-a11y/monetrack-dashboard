@@ -615,24 +615,38 @@ create or replace function public.dash_conversions(
   reward numeric, reward_rate text, status text, pay_status text,
   device text, os text, first_referrer text, total_count bigint
 ) language sql security invoker stable as $$
-  with n as (
+  -- 列フィルタの配列は、ここで1回だけ作る。
+  -- 2か所から参照するので materialized にして、確実に1回にする。
+  with fl as materialized (
+    select
+      public.jsonb_pick(p_filters, 'status')        as f_status,
+      public.jsonb_pick(p_filters, 'advertiser_id') as f_adv,
+      public.jsonb_pick(p_filters, 'affiliate_id')  as f_aff,
+      public.jsonb_pick(p_filters, 'product_name')  as f_prod,
+      public.jsonb_pick(p_filters, 'ad_name')       as f_ad,
+      public.jsonb_pick(p_filters, 'campaign')      as f_camp,
+      public.jsonb_pick(p_filters, 'reward_rate')   as f_rate,
+      public.jsonb_pick(p_filters, 'pay_status')    as f_pay,
+      public.jsonb_pick(p_filters, 'device')        as f_dev,
+      public.jsonb_pick(p_filters, 'os')            as f_os
+  ), n as (
     select count(*) as total
-    from public.conversions c
+    from public.conversions c cross join fl
     where c.occurred_at >= public.jst_start(p_from)
       and c.occurred_at <  public.jst_start(p_to + 1)
       and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
       and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
       and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
-      and (public.jsonb_pick(p_filters,'status')        is null or c.status        = any(public.jsonb_pick(p_filters,'status')))
-      and (public.jsonb_pick(p_filters,'advertiser_id') is null or c.advertiser_id = any(public.jsonb_pick(p_filters,'advertiser_id')))
-      and (public.jsonb_pick(p_filters,'affiliate_id')  is null or c.affiliate_id  = any(public.jsonb_pick(p_filters,'affiliate_id')))
-      and (public.jsonb_pick(p_filters,'product_name')  is null or c.product_name  = any(public.jsonb_pick(p_filters,'product_name')))
-      and (public.jsonb_pick(p_filters,'ad_name')       is null or c.ad_name       = any(public.jsonb_pick(p_filters,'ad_name')))
-      and (public.jsonb_pick(p_filters,'campaign')      is null or c.campaign      = any(public.jsonb_pick(p_filters,'campaign')))
-      and (public.jsonb_pick(p_filters,'reward_rate')   is null or c.reward_rate   = any(public.jsonb_pick(p_filters,'reward_rate')))
-      and (public.jsonb_pick(p_filters,'pay_status')    is null or c.pay_status    = any(public.jsonb_pick(p_filters,'pay_status')))
-      and (public.jsonb_pick(p_filters,'device')        is null or c.device        = any(public.jsonb_pick(p_filters,'device')))
-      and (public.jsonb_pick(p_filters,'os')            is null or c.os            = any(public.jsonb_pick(p_filters,'os')))
+      and (fl.f_status is null or c.status        = any(fl.f_status))
+      and (fl.f_adv    is null or c.advertiser_id = any(fl.f_adv))
+      and (fl.f_aff    is null or c.affiliate_id  = any(fl.f_aff))
+      and (fl.f_prod   is null or c.product_name  = any(fl.f_prod))
+      and (fl.f_ad     is null or c.ad_name       = any(fl.f_ad))
+      and (fl.f_camp   is null or c.campaign      = any(fl.f_camp))
+      and (fl.f_rate   is null or c.reward_rate   = any(fl.f_rate))
+      and (fl.f_pay    is null or c.pay_status    = any(fl.f_pay))
+      and (fl.f_dev    is null or c.device        = any(fl.f_dev))
+      and (fl.f_os     is null or c.os            = any(fl.f_os))
       and (p_search is null or p_search = ''
            or c.product_name   ilike '%' || p_search || '%'
            or c.ad_name        ilike '%' || p_search || '%'
@@ -646,22 +660,22 @@ create or replace function public.dash_conversions(
     c.product_name, c.ad_name, c.campaign, c.qty, c.sale_price,
     c.reward, c.reward_rate, c.status, c.pay_status,
     c.device, c.os, c.first_referrer, n.total
-  from public.conversions c cross join n
+  from public.conversions c cross join n cross join fl
   where c.occurred_at >= public.jst_start(p_from)
     and c.occurred_at <  public.jst_start(p_to + 1)
     and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
     and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
     and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
-    and (public.jsonb_pick(p_filters,'status')        is null or c.status        = any(public.jsonb_pick(p_filters,'status')))
-    and (public.jsonb_pick(p_filters,'advertiser_id') is null or c.advertiser_id = any(public.jsonb_pick(p_filters,'advertiser_id')))
-    and (public.jsonb_pick(p_filters,'affiliate_id')  is null or c.affiliate_id  = any(public.jsonb_pick(p_filters,'affiliate_id')))
-    and (public.jsonb_pick(p_filters,'product_name')  is null or c.product_name  = any(public.jsonb_pick(p_filters,'product_name')))
-    and (public.jsonb_pick(p_filters,'ad_name')       is null or c.ad_name       = any(public.jsonb_pick(p_filters,'ad_name')))
-    and (public.jsonb_pick(p_filters,'campaign')      is null or c.campaign      = any(public.jsonb_pick(p_filters,'campaign')))
-    and (public.jsonb_pick(p_filters,'reward_rate')   is null or c.reward_rate   = any(public.jsonb_pick(p_filters,'reward_rate')))
-    and (public.jsonb_pick(p_filters,'pay_status')    is null or c.pay_status    = any(public.jsonb_pick(p_filters,'pay_status')))
-    and (public.jsonb_pick(p_filters,'device')        is null or c.device        = any(public.jsonb_pick(p_filters,'device')))
-    and (public.jsonb_pick(p_filters,'os')            is null or c.os            = any(public.jsonb_pick(p_filters,'os')))
+    and (fl.f_status is null or c.status        = any(fl.f_status))
+    and (fl.f_adv    is null or c.advertiser_id = any(fl.f_adv))
+    and (fl.f_aff    is null or c.affiliate_id  = any(fl.f_aff))
+    and (fl.f_prod   is null or c.product_name  = any(fl.f_prod))
+    and (fl.f_ad     is null or c.ad_name       = any(fl.f_ad))
+    and (fl.f_camp   is null or c.campaign      = any(fl.f_camp))
+    and (fl.f_rate   is null or c.reward_rate   = any(fl.f_rate))
+    and (fl.f_pay    is null or c.pay_status    = any(fl.f_pay))
+    and (fl.f_dev    is null or c.device        = any(fl.f_dev))
+    and (fl.f_os     is null or c.os            = any(fl.f_os))
     and (p_search is null or p_search = ''
          or c.product_name   ilike '%' || p_search || '%'
          or c.ad_name        ilike '%' || p_search || '%'
@@ -669,8 +683,6 @@ create or replace function public.dash_conversions(
          or c.campaign       ilike '%' || p_search || '%'
          or c.order_id       ilike '%' || p_search || '%'
          or c.first_referrer ilike '%' || p_search || '%')
-  -- 並べ替え。使わない行は null になるので、指定した列だけが効く。
-  -- 既定（発生日時の新しい順）は occurred_at の索引をそのまま使える。
   order by
     (case when p_sort = 'occurred_at' and p_dir = 'asc'  then c.occurred_at end) asc  nulls last,
     (case when p_sort = 'occurred_at' and p_dir = 'desc' then c.occurred_at end) desc nulls last,
@@ -699,9 +711,7 @@ create or replace function public.dash_conversions(
   limit greatest(p_limit, 1) offset greatest(p_offset, 0)
 $$;
 
--- 列フィルタに出す「値の候補」を、多い順に返す。
--- ほかの列の絞り込みは効かせるが、自分自身の絞り込みは外す
--- （表計算ソフトと同じ。外さないと、いま選んでいる値しか出てこなくなる）。
+-- 値の候補も同じ直し方をする
 create or replace function public.dash_conversion_values(
   p_from date,
   p_to date,
@@ -713,7 +723,21 @@ create or replace function public.dash_conversion_values(
   p_filters jsonb default null,
   p_limit integer default 500
 ) returns table(value text, n bigint) language sql security invoker stable as $$
-  with g as (select coalesce(p_filters, '{}'::jsonb) - p_col as f)
+  -- 自分の列の絞り込みは外す（外すと候補が減らない＝表計算ソフトと同じ）
+  with fl as materialized (
+    select
+      public.jsonb_pick(f, 'status')        as f_status,
+      public.jsonb_pick(f, 'advertiser_id') as f_adv,
+      public.jsonb_pick(f, 'affiliate_id')  as f_aff,
+      public.jsonb_pick(f, 'product_name')  as f_prod,
+      public.jsonb_pick(f, 'ad_name')       as f_ad,
+      public.jsonb_pick(f, 'campaign')      as f_camp,
+      public.jsonb_pick(f, 'reward_rate')   as f_rate,
+      public.jsonb_pick(f, 'pay_status')    as f_pay,
+      public.jsonb_pick(f, 'device')        as f_dev,
+      public.jsonb_pick(f, 'os')            as f_os
+    from (select coalesce(p_filters, '{}'::jsonb) - p_col as f) s
+  )
   select
     coalesce(nullif(case p_col
       when 'status'        then c.status
@@ -728,22 +752,22 @@ create or replace function public.dash_conversion_values(
       when 'os'            then c.os
     end, ''), '(なし)') as value,
     count(*) as n
-  from public.conversions c cross join g
+  from public.conversions c cross join fl
   where c.occurred_at >= public.jst_start(p_from)
     and c.occurred_at <  public.jst_start(p_to + 1)
     and (p_statuses is null or array_length(p_statuses, 1) is null or c.status = any(p_statuses))
     and (p_advertisers is null or array_length(p_advertisers, 1) is null or c.advertiser_id = any(p_advertisers))
     and (p_affiliates is null or array_length(p_affiliates, 1) is null or c.affiliate_id = any(p_affiliates))
-    and (public.jsonb_pick(g.f,'status')        is null or c.status        = any(public.jsonb_pick(g.f,'status')))
-    and (public.jsonb_pick(g.f,'advertiser_id') is null or c.advertiser_id = any(public.jsonb_pick(g.f,'advertiser_id')))
-    and (public.jsonb_pick(g.f,'affiliate_id')  is null or c.affiliate_id  = any(public.jsonb_pick(g.f,'affiliate_id')))
-    and (public.jsonb_pick(g.f,'product_name')  is null or c.product_name  = any(public.jsonb_pick(g.f,'product_name')))
-    and (public.jsonb_pick(g.f,'ad_name')       is null or c.ad_name       = any(public.jsonb_pick(g.f,'ad_name')))
-    and (public.jsonb_pick(g.f,'campaign')      is null or c.campaign      = any(public.jsonb_pick(g.f,'campaign')))
-    and (public.jsonb_pick(g.f,'reward_rate')   is null or c.reward_rate   = any(public.jsonb_pick(g.f,'reward_rate')))
-    and (public.jsonb_pick(g.f,'pay_status')    is null or c.pay_status    = any(public.jsonb_pick(g.f,'pay_status')))
-    and (public.jsonb_pick(g.f,'device')        is null or c.device        = any(public.jsonb_pick(g.f,'device')))
-    and (public.jsonb_pick(g.f,'os')            is null or c.os            = any(public.jsonb_pick(g.f,'os')))
+    and (fl.f_status is null or c.status        = any(fl.f_status))
+    and (fl.f_adv    is null or c.advertiser_id = any(fl.f_adv))
+    and (fl.f_aff    is null or c.affiliate_id  = any(fl.f_aff))
+    and (fl.f_prod   is null or c.product_name  = any(fl.f_prod))
+    and (fl.f_ad     is null or c.ad_name       = any(fl.f_ad))
+    and (fl.f_camp   is null or c.campaign      = any(fl.f_camp))
+    and (fl.f_rate   is null or c.reward_rate   = any(fl.f_rate))
+    and (fl.f_pay    is null or c.pay_status    = any(fl.f_pay))
+    and (fl.f_dev    is null or c.device        = any(fl.f_dev))
+    and (fl.f_os     is null or c.os            = any(fl.f_os))
     and (p_search is null or p_search = ''
          or c.product_name   ilike '%' || p_search || '%'
          or c.ad_name        ilike '%' || p_search || '%'
@@ -755,6 +779,7 @@ create or replace function public.dash_conversion_values(
   order by 2 desc, 1
   limit greatest(p_limit, 1)
 $$;
+
 
 
 -- 選んだ相手ごとの時系列を返す。

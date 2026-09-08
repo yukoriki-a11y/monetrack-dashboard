@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081916';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609081924';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -71,10 +71,13 @@ export async function updatePassword(password) {
 }
 
 // パスワードを忘れた人に再設定メールを送る。
-// 戻り先は Supabase の Redirect URLs に登録されている必要がある。
+//
+// 戻り先（redirectTo）はあえて指定しない。指定すると Supabase の
+// Redirect URLs に登録されていないと弾かれるが、省けば Site URL に戻る。
+// Site URL はこのダッシュボードの URL そのものなので、設定を1か所に
+// まとめられる。
 export async function sendPasswordReset(email) {
-  const redirectTo = location.origin + location.pathname;
-  const { error } = await sb().auth.resetPasswordForEmail(email, { redirectTo });
+  const { error } = await sb().auth.resetPasswordForEmail(email);
   if (error) throw error;
 }
 

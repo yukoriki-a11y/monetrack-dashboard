@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609080902">
+<link rel="stylesheet" href="css/app.css?v=202609080937">
 </head>
 <body>
 
@@ -222,6 +222,12 @@
             <div class="row wrap">
               <span class="muted small">表示するもの</span>
               <div class="seg" id="advertiser-parts"></div>
+              <span class="muted small">売上の推移</span>
+              <div class="seg" id="advertiser-grain">
+                <button class="chip is-active" data-egrain="day">日</button>
+                <button class="chip" data-egrain="month">月</button>
+                <button class="chip" data-egrain="year">年</button>
+              </div>
               <input id="advertiser-search" type="search" placeholder="広告主で検索">
               <button class="btn sm" data-export="advertiser">CSV</button>
               <span class="muted small" id="advertiser-count"></span>
@@ -239,6 +245,12 @@
             <div class="row wrap">
               <span class="muted small">表示するもの</span>
               <div class="seg" id="affiliate-parts"></div>
+              <span class="muted small">売上の推移</span>
+              <div class="seg" id="affiliate-grain">
+                <button class="chip is-active" data-egrain="day">日</button>
+                <button class="chip" data-egrain="month">月</button>
+                <button class="chip" data-egrain="year">年</button>
+              </div>
               <input id="affiliate-search" type="search" placeholder="アフィリエイターIDで検索">
               <button class="btn sm" data-export="affiliate">CSV</button>
               <span class="muted small" id="affiliate-count"></span>
@@ -248,49 +260,40 @@
         </div>
       </section>
 
-      <!-- 比較: 選んだ相手を1本ずつの線で重ねる（内訳ではなく直接くらべる） -->
-      <section class="view v-compare" data-view="versus" hidden>
-        <div class="card cmp-pick">
-          <div class="card-head">
-            <div class="seg" id="vs-dim">
-              <button class="chip is-active" data-vsdim="affiliate">アフィリエイター</button>
-              <button class="chip" data-vsdim="advertiser">広告主</button>
-            </div>
-          </div>
-          <div class="row wrap">
-            <input id="vs-search" type="search" placeholder="IDで検索">
-            <button class="btn sm" id="vs-search-go">検索</button>
-            <button class="btn sm" id="vs-all">全員選択</button>
-            <button class="btn sm" id="vs-top5">売上上位5件</button>
-            <button class="btn link" id="vs-clear">選択を外す</button>
-          </div>
-          <div class="cmp-list" id="vs-list"></div>
-        </div>
-
+      <!-- 比較: 2つの枠に別々の相手を入れて、同じ見方で並べてくらべる -->
+      <section class="view v-versus" data-view="versus" hidden>
         <div class="card">
           <div class="card-head">
-            <h2 id="vs-title">動きの比較</h2>
+            <h2>比較</h2>
             <div class="row wrap">
-              <label class="inline check" title="線の下を塗りつぶすかどうか">
-                <input type="checkbox" id="vs-fill">
-                塗りつぶし
-              </label>
-              <button class="btn sm" data-export="versus">CSV</button>
+              <span class="muted small">並べ方</span>
+              <div class="seg" id="vs-layout">
+                <button class="chip is-active" data-vslayout="row">左右</button>
+                <button class="chip" data-vslayout="col">上下</button>
+              </div>
+              <span class="muted small">見方</span>
+              <div class="seg" id="vs-mode">
+                <button class="chip is-active" data-vsmode="line">線グラフ</button>
+                <button class="chip" data-vsmode="pie">円グラフ</button>
+                <button class="chip" data-vsmode="rank">ランキング</button>
+              </div>
+              <span class="muted small">指標</span>
               <div class="seg" id="vs-metric">
-                <button class="chip is-active" data-vsmetric="conversions">成果件数</button>
-                <button class="chip" data-vsmetric="sales">売上</button>
+                <button class="chip is-active" data-vsmetric="sales">売上</button>
+                <button class="chip" data-vsmetric="conversions">成果件数</button>
                 <button class="chip" data-vsmetric="reward">報酬額</button>
                 <button class="chip" data-vsmetric="clicks">クリック</button>
                 <button class="chip" data-vsmetric="cvr">CVR</button>
               </div>
               <div class="seg" id="vs-grain">
                 <button class="chip is-active" data-vsgrain="day">日</button>
-                <button class="chip" data-vsgrain="week">週</button>
                 <button class="chip" data-vsgrain="month">月</button>
+                <button class="chip" data-vsgrain="year">年</button>
               </div>
+              <button class="btn sm" data-export="versus">CSV</button>
             </div>
           </div>
-          <div class="chart-wrap"><canvas id="c-versus"></canvas></div>
+          <div class="vs-panes" id="vs-panes"></div>
         </div>
       </section>
 
@@ -300,13 +303,9 @@
           <div class="card-head">
             <h2>ランキング</h2>
             <div class="row wrap">
-              <div class="seg" id="rank-dim">
-                <button class="chip is-active" data-rankdim="affiliate">アフィリエイター</button>
-                <button class="chip" data-rankdim="advertiser">広告主</button>
-                <button class="chip" data-rankdim="product">商品</button>
-                <button class="chip" data-rankdim="ad">広告</button>
-                <button class="chip" data-rankdim="referrer">流入元</button>
-              </div>
+              <span class="muted small">表示するもの</span>
+              <div class="seg" id="rank-parts"></div>
+              <span class="muted small">指標</span>
               <div class="seg" id="rank-metric">
                 <button class="chip is-active" data-rankmetric="sales">売上</button>
                 <button class="chip" data-rankmetric="conversions">成果件数</button>
@@ -316,11 +315,7 @@
               <button class="btn sm" data-export="rank">CSV</button>
             </div>
           </div>
-          <div class="table-wrap"><table id="t-rank"></table></div>
-        </div>
-        <div class="card">
-          <h2 id="rank-chart-title">上位</h2>
-          <div class="chart-wrap"><canvas id="c-rank"></canvas></div>
+          <div class="blocks" id="rank-blocks"></div>
         </div>
       </section>
 
@@ -435,6 +430,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609080902"></script>
+<script type="module" src="js/app.js?v=202609080937"></script>
 </body>
 </html>

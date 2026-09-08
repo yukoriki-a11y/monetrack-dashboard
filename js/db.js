@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080902';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202609080937';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -80,12 +80,25 @@ async function rpc(name, args) {
 //
 // scope を渡すと、その相手だけに絞り直す（フィルタの選択より優先）。
 // 「広告主ごとのかたまり」を1件ずつ描くときに使う。
+//
+// 絞り込みの値は3通りの意味を持たせている。
+//   null / undefined … 絞らない（＝全部）
+//   ["a","b"]        … その相手だけ
+//   []               … 「全部外した」。全部と区別したいので、
+//                       どの行にも当たらない番兵を送って0件にする。
+const NONE = '__afd_none__';
+export function listArg(v) {
+  if (v === null || v === undefined) return null;
+  return v.length ? v : [NONE];
+}
+
 function base(f, scope = {}) {
-  const pick = (a, b) => (a?.length ? a : (b?.length ? b : null));
+  // scope（かたまり1件ぶんの絞り込み）はフィルタより優先する
+  const pick = (a, b) => (a?.length ? a : listArg(b));
   return {
     p_from: f.from,
     p_to: f.to,
-    p_statuses: f.statuses?.length ? f.statuses : null,
+    p_statuses: listArg(f.statuses),
     p_advertisers: pick(scope.advertisers, f.advertisers),
     p_affiliates: pick(scope.affiliates, f.affiliates),
   };
@@ -104,8 +117,8 @@ export const api = {
     rpc('dash_affiliate_detail', {
       p_affiliate: affiliateId,
       p_from: f.from, p_to: f.to,
-      p_statuses: f.statuses?.length ? f.statuses : null,
-      p_advertisers: f.advertisers?.length ? f.advertisers : null,
+      p_statuses: listArg(f.statuses),
+      p_advertisers: listArg(f.advertisers),
     }),
   // scope で絞り込みを上書きできる（フィルタの値より優先）。
   // 「軸」と「絞り込み」を別に渡せるので、
@@ -115,17 +128,13 @@ export const api = {
   compare: (f, dim, keys, grain = 'day', limit = 5, scope = {}) =>
     rpc('dash_compare', {
       p_from: f.from, p_to: f.to,
-      p_statuses: f.statuses?.length ? f.statuses : null,
+      p_statuses: listArg(f.statuses),
       p_dim: dim,
       p_keys: keys?.length ? keys : null,
       p_grain: grain,
       p_limit: limit,
-      p_advertisers: scope.advertisers?.length
-        ? scope.advertisers
-        : (f.advertisers?.length ? f.advertisers : null),
-      p_affiliates: scope.affiliates?.length
-        ? scope.affiliates
-        : (f.affiliates?.length ? f.affiliates : null),
+      p_advertisers: scope.advertisers?.length ? scope.advertisers : listArg(f.advertisers),
+      p_affiliates: scope.affiliates?.length ? scope.affiliates : listArg(f.affiliates),
     }),
   conversions: (f, search, limit, offset) =>
     rpc('dash_conversions', { ...base(f), p_search: search || null, p_limit: limit, p_offset: offset }),

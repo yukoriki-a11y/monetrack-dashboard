@@ -653,11 +653,104 @@ table.mini tbody tr:nth-child(odd) { background: var(--panel-2); }
 table.mini tbody tr:hover { background: var(--panel-3); }
 table.mini td.trunc { max-width: 150px; }
 
-/* ランキング: 左に表、右に横棒 */
-.v-rank {
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+/* ランキング: 何枚かのランキングを縦に並べてスクロールする */
+.v-rank { grid-template-rows: minmax(0, 1fr); }
+
+.rank-card {
+  background: var(--panel-2);
+  border-radius: var(--radius);
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 8px;
+}
+.rank-card .table-wrap { max-height: 420px; background: var(--panel); }
+.rank-card .eb-head { background: var(--panel-2); }
+
+table.rank-table { font-size: 12px; }
+table.rank-table thead th { background: var(--panel-3); }
+table.rank-table td.rank-no { width: 46px; color: var(--ink-3); font-weight: 650; }
+table.rank-table td.strong { font-weight: 650; }
+table.rank-table tr.is-open > td { background: var(--accent-soft); }
+
+/* 内訳を開くボタン */
+.disclose {
+  appearance: none;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px 2px 0;
+  transition: transform .12s ease;
+  display: inline-block;
+}
+.disclose:hover { color: var(--ink); }
+.disclose.is-open { transform: rotate(90deg); color: var(--ink); }
+
+tr.rank-detail > td { background: var(--panel-2); padding: 8px 10px 10px 46px; }
+.rank-detail-body { display: grid; gap: 5px; }
+ul.rank-break { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+ul.rank-break li {
+  display: grid;
+  grid-template-columns: 22px minmax(70px, 1.1fr) minmax(60px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+ul.rank-break .no { color: var(--ink-3); text-align: right; }
+ul.rank-break .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.rank-break .bar { background: var(--panel-3); border-radius: 3px; height: 7px; overflow: hidden; }
+ul.rank-break .bar i { display: block; height: 100%; background: var(--ink-3); border-radius: 3px; }
+ul.rank-break .vl { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* 日別ランキング: 日付を横に並べ、下にその日の順位を積む */
+table.matrix.rank-day td { text-align: left; min-width: 130px; }
+table.matrix.rank-day th.rowhead { min-width: 56px; text-align: center; }
+.day-hit { display: grid; gap: 1px; }
+.day-hit .nm { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 118px; }
+.day-hit .vl { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* 比較: 2つの枠を左右か上下に置く */
+.v-versus { grid-template-rows: minmax(0, 1fr); }
+.vs-panes {
+  display: grid;
+  gap: var(--gap);
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);
 }
+.vs-panes.is-col {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.vs-pane {
+  background: var(--panel-2);
+  border-radius: var(--radius);
+  padding: 9px 11px 11px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+}
+.vs-pane .eb-head { position: static; margin: 0; padding: 0; background: none; }
+.vs-tag {
+  display: inline-grid;
+  place-items: center;
+  width: 18px; height: 18px;
+  margin-right: 6px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+}
+.vs-body { min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
+.vs-body .chart-wrap { height: 100%; min-height: 180px; }
+.vs-body .table-wrap { background: var(--panel); }
+.vs-pick > summary { background: var(--panel-3); }
+.vs-pick-list { display: grid; gap: 2px; }
 
 /* 成果明細 / 取込 */
 .v-detail { grid-template-rows: minmax(0, 1fr); }

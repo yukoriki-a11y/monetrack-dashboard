@@ -1,7 +1,7 @@
 // Chart.js の薄いラッパ。同じ canvas に描き直すときは古いインスタンスを破棄する。
 
-import { compact, num, yen } from './util.js?v=202609080902';
-import { palette, isDark } from './settings.js?v=202609080902';
+import { compact, num, yen } from './util.js?v=202609080937';
+import { palette, isDark } from './settings.js?v=202609080937';
 
 const registry = new Map();
 
@@ -61,6 +61,23 @@ function draw(canvasId, config) {
   const chart = new Chart(canvas, config);
   registry.set(canvasId, chart);
   return chart;
+}
+
+// 凡例のクリックで系列を出し入れする。
+// 既定の動きは残しつつ、呼び出し側に「いま隠したか」を知らせて覚えてもらう
+// （描き直すたびに Chart.js の状態は消えるため）。
+function legendPlugin(series, onLegend) {
+  return {
+    labels: { filter: () => true },
+    onClick(e, item, legend) {
+      const chart = legend.chart;
+      const meta = chart.getDatasetMeta(item.datasetIndex);
+      const hidden = meta.hidden === null ? !chart.data.datasets[item.datasetIndex].hidden : !meta.hidden;
+      meta.hidden = hidden;
+      chart.update();
+      onLegend?.(series[item.datasetIndex]?.label, hidden);
+    },
+  };
 }
 
 function deepMerge(a, b) {
@@ -231,13 +248,17 @@ export function line(canvasId, labels, series, opts = {}) {
         pointHoverRadius: 4,
         tension: 0,          // 点と点を直線でつなぐ（曲線にすると無い値を通ってしまう）
         fill: Boolean(s.fill),
+        hidden: Boolean(s.hidden),
         yAxisID: s.axis || 'y',
         spanGaps: true,
       })),
     },
     options: {
       scales: axes(opts),
-      plugins: opts.pieTooltip ? { tooltip: pieTooltip(fmt) } : {},
+      plugins: {
+        legend: legendPlugin(series, opts.onLegend),
+        ...(opts.pieTooltip ? { tooltip: pieTooltip(fmt) } : {}),
+      },
     },
   });
 }
@@ -269,6 +290,7 @@ export function area(canvasId, labels, series, opts = {}) {
         pointHoverRadius: 3,
         tension: 0,          // 点と点を直線でつなぐ
         fill: filled,
+        hidden: Boolean(s.hidden),
         spanGaps: true,
       })),
     },
@@ -291,8 +313,11 @@ export function area(canvasId, labels, series, opts = {}) {
           },
         },
       },
-      // 内訳はマウスを当てたときに円グラフで見せる
-      plugins: { tooltip: pieTooltip(fmt) },
+      plugins: {
+        // 内訳はマウスを当てたときに円グラフで見せる
+        tooltip: pieTooltip(fmt),
+        legend: legendPlugin(series, opts.onLegend),
+      },
     },
   });
 }

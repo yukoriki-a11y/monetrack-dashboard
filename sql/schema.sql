@@ -859,10 +859,6 @@ returns jsonb language sql security invoker stable as $$
       select coalesce(jsonb_agg(t.v order by t.v), '[]'::jsonb)
       from (select distinct c.status v from public.conversions c
             where c.status is not null and c.status <> '') t),
-    'pay_statuses', (
-      select coalesce(jsonb_agg(t.v order by t.v), '[]'::jsonb)
-      from (select distinct c.pay_status v from public.conversions c
-            where c.pay_status is not null and c.pay_status <> '') t),
     'advertisers', (
       select coalesce(jsonb_agg(t.v order by t.v), '[]'::jsonb)
       from (select distinct c.advertiser_id v from public.conversions c
@@ -877,14 +873,15 @@ returns jsonb language sql security invoker stable as $$
             union
             select distinct k.affiliate_id from public.clicks k
             where k.affiliate_id is not null and k.affiliate_id <> '') t),
-    'cv_date_min', (select min(c.occurred_at at time zone 'Asia/Tokyo')::date from public.conversions c),
-    'cv_date_max', (select max(c.occurred_at at time zone 'Asia/Tokyo')::date from public.conversions c),
-    'ck_date_min', (select min(k.clicked_at  at time zone 'Asia/Tokyo')::date from public.clicks k),
-    'ck_date_max', (select max(k.clicked_at  at time zone 'Asia/Tokyo')::date from public.clicks k),
-    'cv_rows',     (select count(*) from public.conversions),
-    'ck_rows',     (select count(*) from public.clicks)
+    -- 先に集めてから時間帯を直す。こう書くと occurred_at の索引の
+    -- 端をのぞくだけで済む（式をかぶせると全読みになる）。
+    'cv_date_min', ((select min(c.occurred_at) from public.conversions c) at time zone 'Asia/Tokyo')::date,
+    'cv_date_max', ((select max(c.occurred_at) from public.conversions c) at time zone 'Asia/Tokyo')::date,
+    'ck_date_min', ((select min(k.clicked_at)  from public.clicks k)      at time zone 'Asia/Tokyo')::date,
+    'ck_date_max', ((select max(k.clicked_at)  from public.clicks k)      at time zone 'Asia/Tokyo')::date
   )
 $$;
+
 
 -- 権限を付け直す
 -- アフィリエイター 1 人の内訳（流入元・広告・商品・日別）

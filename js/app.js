@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081337';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081337';
-import * as ch from './charts.js?v=202609081337';
-import { renderTable, resetSort } from './table.js?v=202609081337';
-import { initImporter, loadImportHistory } from './importer.js?v=202609081337';
-import { dayKind, holidayName } from './holiday.js?v=202609081337';
-import * as cfg from './settings.js?v=202609081337';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge } from './util.js?v=202609081402';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api } from './db.js?v=202609081402';
+import * as ch from './charts.js?v=202609081402';
+import { renderTable, resetSort } from './table.js?v=202609081402';
+import { initImporter, loadImportHistory } from './importer.js?v=202609081402';
+import { dayKind, holidayName } from './holiday.js?v=202609081402';
+import * as cfg from './settings.js?v=202609081402';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -40,8 +40,8 @@ const state = {
   affiliates: [],       // アフィリエイター一覧のキャッシュ
   compare: newPickState('affiliate', true),   // 広告主/アフィリエイター（内訳を塗り分け）
   list: {               // 広告主タブ / アフィリエイタータブ
-    advertiser: { search: '', rows: [], grain: 'day' },
-    affiliate:  { search: '', rows: [], grain: 'day' },
+    advertiser: { search: '', rows: [], grain: 'day', filled: true, hiddenBands: new Set() },
+    affiliate:  { search: '', rows: [], grain: 'day', filled: true, hiddenBands: new Set() },
   },
   // 比較: 2つの枠に別々の相手を入れて、同じ見方で並べる
   versus: {
@@ -254,11 +254,25 @@ function switchView(view) {
 
 // そのページのフィルタを取り出す。初めて開くページは、
 // いま見ている条件を引き継いで始める（毎回ゼロからだと面倒なので）。
+// 広告主 / アフィリエイターの画面は、最初は誰も選ばれていない状態で開く。
+// 全員ぶんのかたまりを並べても見きれないので、右上で選んでから出す。
+const START_EMPTY = { advertiser: 'advertisers', affiliate: 'affiliates' };
+
+// まだ誰も選んでいない画面では、選ぶ場所が分かるように縁取る。
+// 選んだ瞬間に外れてほしいので、チェックの反映側からも呼ぶ。
+function markWaitingPicker() {
+  const key = START_EMPTY[state.view];
+  const sel = key ? state.filter[key] : null;
+  const waiting = Array.isArray(sel) && sel.length === 0;
+  $('#f-advertiser-dd').classList.toggle('is-waiting', waiting && key === 'advertisers');
+  $('#f-affiliate-dd').classList.toggle('is-waiting', waiting && key === 'affiliates');
+}
+
 function filterFor(view) {
   if (!state.filters[view]) {
     const base = state.filter;
     const copy = (v) => (Array.isArray(v) ? [...v] : v);
-    state.filters[view] = base
+    const f = base
       ? {
         ...base,
         statuses: copy(base.statuses),
@@ -266,6 +280,10 @@ function filterFor(view) {
         affiliates: copy(base.affiliates),
       }
       : newFilter();
+    // [] は「ひとつも選んでいない」の意味（null=全部 とは区別している）
+    const key = START_EMPTY[view];
+    if (key) f[key] = [];
+    state.filters[view] = f;
   }
   return state.filters[view];
 }
@@ -287,6 +305,8 @@ function syncFilterUI() {
   const off = pickerOff(state.view);
   $('#f-advertiser-dd').hidden = off.includes('advertiser');
   $('#f-affiliate-dd').hidden = off.includes('affiliate');
+
+  markWaitingPicker();
 
   $('#f-from').value = f.from || '';
   $('#f-to').value = f.to || '';
@@ -415,6 +435,10 @@ function wireViewControls() {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
 
     segClick(`#${kind}-grain`, 'egrain', (v) => { state.list[kind].grain = v; });
+    $(`#${kind}-fill`).addEventListener('change', (e) => {
+      state.list[kind].filled = e.target.checked;
+      render();
+    });
   }
 
   $('#detail-go').addEventListener('click', () => {
@@ -681,6 +705,7 @@ function buildPicker(kind, items) {
   const apply = () => {
     readFilterInputs();
     updatePickerLabel(kind);
+    markWaitingPicker();
     render();
   };
   // 検索中は、見えている行だけを「すべて / 解除」の対象にする
@@ -1143,6 +1168,7 @@ const ENTITY_PARTS = {
   ],
 };
 
+const ENTITY_BANDS = 8;  // 売上の推移を塗り分ける帯の本数
 const PIE_SLICES = 10;   // 円グラフに出す数（残りは「その他」にまとめる）
 const TOP_ROWS = 8;      // 「上位」に出す行数
 const MAX_BLOCKS = 60;   // 一度に並べるかたまりの上限
@@ -1163,6 +1189,36 @@ function togglePart(kind, key) {
   if (set.has(key)) set.delete(key);
   else set.add(key);
   localStorage.setItem(LS_PARTS(kind), JSON.stringify([...set]));
+}
+
+// 「まだ誰も選んでいない」ときの案内。
+// 選ぶ場所（右上のドロップダウン）へ矢印を向ける。
+function showPickPrompt(kind) {
+  const label = LIST_LABEL[kind];
+  $(`#${kind}-blocks`).replaceChildren(
+    el('div', { class: 'pick-prompt' },
+      el('div', { class: 'pp-arrow', 'aria-hidden': 'true', text: '↗' }),
+      el('div', { class: 'pp-big', text: `${label}をクリックしてください` }),
+      el('div', { class: 'pp-sub', text: `右上の「${label}: なし」から選ぶと、ここに出ます` }),
+      el('button', {
+        type: 'button', class: 'btn', text: `${label}を選ぶ`,
+        onclick: (e) => {
+          // これを止めないと、外側クリックの後始末で開いた直後に閉じてしまう
+          e.stopPropagation();
+          const dd = $(kind === 'advertiser' ? '#f-advertiser-dd' : '#f-affiliate-dd');
+          for (const other of $$('details.dropdown')) other.open = false;
+          dd.open = true;
+          placeMenu(dd);
+        },
+      })),
+  );
+}
+
+// 上のボタン（塗りつぶし・粒度）の見た目を、いまの状態に合わせる
+function syncEntityChips(kind) {
+  const st = state.list[kind];
+  $(`#${kind}-fill`).checked = st.filled;
+  $$(`#${kind}-grain .chip`).forEach((c) => c.classList.toggle('is-active', c.dataset.egrain === st.grain));
 }
 
 // 「表示するもの」のボタン列
@@ -1228,6 +1284,16 @@ async function renderEntity(kind) {
   const token = ++entityToken;
 
   buildPartButtons(kind);
+  syncEntityChips(kind);
+
+  // まだ誰も選んでいないときは、問い合わせずに「選んでください」を出す
+  const sel = f[START_EMPTY[kind]];
+  if (Array.isArray(sel) && sel.length === 0) {
+    st.rows = [];
+    $(`#${kind}-count`).textContent = '';
+    showPickPrompt(kind);
+    return;
+  }
 
   // 一覧（売上順）。上のドロップダウンで絞られていれば、その相手だけが返る。
   const all = await api.dimension(f, kind, 500);
@@ -1351,11 +1417,42 @@ async function loadEntity(kind, id) {
     api.dimension(f, other, 60, null, scope),
     api.dimension(f, 'product', TOP_ROWS, null, scope),
     api.timeseries(f, 'day', scope),
+    // 売上の推移を「もう一方の軸」で塗り分けるための日別内訳
+    api.compare(f, other, null, 'day', ENTITY_BANDS, scope),
   ];
   if (kind === 'affiliate') jobs.push(api.dimension(f, 'referrer', PIE_SLICES + 5, null, scope));
 
-  const [others, products, ts, referrers] = await Promise.all(jobs);
-  return { others, products, ts, referrers: referrers || [], daily: dailyRows(ts, f.from, f.to) };
+  const [others, products, ts, bands, referrers] = await Promise.all(jobs);
+  return {
+    others, products, ts, bands: bands || [],
+    referrers: referrers || [],
+    daily: dailyRows(ts, f.from, f.to),
+  };
+}
+
+// 日別の内訳（系列 × 日）を、粒度に合わせてまとめ直してグラフ用にする
+function bandSeries(rows, grain, hidden) {
+  const keyOf = (b) => (grain === 'year' ? b.slice(0, 4) : grain === 'month' ? b.slice(0, 7) : b);
+  const buckets = [...new Set(rows.map((r) => keyOf(String(r.bucket))))].sort();
+  const by = new Map();
+  for (const r of rows) {
+    const k = keyOf(String(r.bucket));
+    if (!by.has(r.series)) by.set(r.series, new Map());
+    const m = by.get(r.series);
+    m.set(k, (m.get(k) || 0) + Number(r.sales || 0));
+  }
+  const total = (name) => [...by.get(name).values()].reduce((a, v) => a + v, 0);
+  const order = [...by.keys()].sort((a, b) => total(b) - total(a));
+
+  return {
+    labels: buckets.map((b) => (grain === 'day' ? b.slice(5).replace('-', '/') : b)),
+    series: order.map((name, i) => ({
+      label: name,
+      color: ch.color(i),
+      hidden: hidden.has(name),
+      data: buckets.map((b) => by.get(name).get(b) || 0),
+    })),
+  };
 }
 
 // 上位 N 件＋「その他」にまとめた円グラフ用のデータ
@@ -1408,9 +1505,26 @@ function drawEntityPart(kind, id, part, cell, data) {
   }
 
   if (part === 'line') {
+    const st = state.list[kind];
     const cid = `c-${kind}-line-${safeId}`;
-    const pts = rollup(data.daily, state.list[kind].grain);
     cell.replaceChildren(el('div', { class: 'chart-wrap' }, el('canvas', { id: cid })));
+
+    // 内訳が取れていれば、もう一方の軸で塗り分ける。
+    // 凡例をクリックすると出し入れでき、マウスを当てると円グラフで割合が出る。
+    if (data.bands?.length) {
+      const { labels, series } = bandSeries(data.bands, st.grain, st.hiddenBands);
+      ch.area(cid, labels, series, {
+        money: true,
+        filled: st.filled,
+        onLegend: (name, nowHidden) => {
+          if (nowHidden) st.hiddenBands.add(name);
+          else st.hiddenBands.delete(name);
+        },
+      });
+      return;
+    }
+    // 内訳が無い相手は、その人ぶんの合計だけを線で出す
+    const pts = rollup(data.daily, st.grain);
     ch.line(cid, pts.map((r) => r.label), [
       { label: '売上', data: pts.map((r) => r.sales), fill: true },
     ], { money: true });

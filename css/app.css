@@ -236,6 +236,23 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
 /* タブ名が長くても1行に収め、入らなければ省略する（折り返すとナビが崩れる） */
 .brand-text { overflow: hidden; text-overflow: ellipsis; }
 .tab span { overflow: hidden; text-overflow: ellipsis; }
+
+/* 横長のロゴ。幅に合わせて縮み、高さで揃える。
+   暗いテーマだと紺色が沈むので、少しだけ明るくする。 */
+.wordmark {
+  height: 20px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
+  min-width: 0;
+}
+.wordmark.lg { height: 30px; }
+.brand .mark { display: none; }          /* 畳んだときだけ出す */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .wordmark { filter: brightness(1.9) saturate(.85); }
+}
+:root[data-theme="dark"] .wordmark { filter: brightness(1.9) saturate(.85); }
 /* ロゴは白背景の正方形JPGなので、円形に切り抜いて角の白を隠す
    （暗いテーマだと白い四角が浮いてしまうため） */
 .logo {
@@ -274,12 +291,13 @@ input:focus-visible, button:focus-visible, summary:focus-visible, select:focus-v
    class で切り替えて JS 側から付け外しする。 */
 #app.nav-collapsed { --nav-w: 52px; }
 #app.nav-collapsed .brand-text,
-#app.nav-collapsed .brand .logo,
+#app.nav-collapsed .brand .wordmark,
 #app.nav-collapsed .tab span,
 #app.nav-collapsed .sidebar-foot #who,
 #app.nav-collapsed .sidebar-foot #build { display: none; }
 #app.nav-collapsed .tab { justify-content: center; padding: 9px 0; }
 #app.nav-collapsed .brand { justify-content: center; padding: 4px 0 12px; }
+#app.nav-collapsed .brand .mark { display: block; }
 #app.nav-collapsed .nav-toggle { margin: 0; }
 #app.nav-collapsed .nav-toggle svg { transform: rotate(180deg); }
 #app.nav-collapsed .sidebar { padding: 12px 6px; }
@@ -587,6 +605,42 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
   align-content: start;
   padding-right: 2px;          /* スクロールバーと中身が重ならないように */
   scrollbar-width: thin;
+}
+
+/* まだ誰も選んでいないときの案内。
+   小さく出しても気づかれないので、画面の真ん中に大きく置く。 */
+.pick-prompt {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  min-height: 60%;
+  padding: 30px 20px;
+  color: var(--ink-3);
+}
+.pick-prompt .pp-arrow {
+  font-size: 46px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--ink) 22%, transparent);
+  /* 右上のドロップダウンの方をゆっくり指す */
+  animation: pp-point 1.8s ease-in-out infinite;
+}
+.pick-prompt .pp-big { font-size: 21px; font-weight: 650; color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.pick-prompt .pp-sub { font-size: 12px; }
+@keyframes pp-point {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(5px, -5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pick-prompt .pp-arrow { animation: none; }
+}
+
+/* 選ぶ場所が分かるように、そのドロップダウンだけ縁取る */
+.dropdown.is-waiting > summary {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ink) 40%, transparent);
+  color: var(--ink);
+  font-weight: 650;
 }
 
 .eblock {

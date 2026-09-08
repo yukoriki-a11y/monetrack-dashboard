@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609081337">
+<link rel="stylesheet" href="css/app.css?v=202609081402">
 </head>
 <body>
 
@@ -13,8 +13,8 @@
 <section id="setup" class="gate" hidden>
   <div class="gate-card">
     <div class="gate-brand">
-      <img class="logo lg" src="assets/monetrack-logo.jpg" alt="マネートラック">
-      <span>マネートラック 成果分析</span>
+      <img class="wordmark lg" src="assets/monetrack-wordmark.png" alt="monetrack">
+      <span>成果分析</span>
     </div>
     <h1>初期設定</h1>
     <p class="muted">Supabase プロジェクトの接続先を入力してください。このブラウザにだけ保存されます。</p>
@@ -37,8 +37,8 @@
 <section id="login" class="gate" hidden>
   <div class="gate-card">
     <div class="gate-brand">
-      <img class="logo lg" src="assets/monetrack-logo.jpg" alt="マネートラック">
-      <span>マネートラック 成果分析</span>
+      <img class="wordmark lg" src="assets/monetrack-wordmark.png" alt="monetrack">
+      <span>成果分析</span>
     </div>
     <h1>ログイン</h1>
     <label>メールアドレス
@@ -59,8 +59,9 @@
   <!-- 左の縦ナビ -->
   <nav class="sidebar" id="tabs">
     <div class="brand">
-      <img class="logo" src="assets/monetrack-logo.jpg" alt="マネートラック">
-      <span class="brand-text">アフィリエイト分析</span>
+      <!-- 開いているときは横長のロゴ、畳んだときは丸いマークだけ（52pxに入らないため） -->
+      <img class="wordmark" src="assets/monetrack-wordmark.png" alt="monetrack">
+      <img class="logo mark" src="assets/monetrack-logo.jpg" alt="monetrack">
       <button id="nav-toggle" class="nav-toggle" title="メニューの開閉" aria-label="メニューの開閉">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
       </button>
@@ -70,7 +71,9 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span>サマリー</span>
     </button>
-    <button class="tab" data-view="compare" title="広告主/アフィリエイター">
+    <!-- 分かりにくいのでいったん隠している。中身は残してあるので、
+         この hidden を外せばそのまま戻る。 -->
+    <button class="tab" data-view="compare" title="広告主/アフィリエイター" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l5-9 4 5 4-8 5 12"/><path d="M3 21h18"/></svg>
       <span>広告主/アフィリエイター</span>
     </button>
@@ -227,6 +230,10 @@
               <span class="muted small">表示するもの</span>
               <div class="seg" id="advertiser-parts"></div>
               <span class="muted small">売上の推移</span>
+              <label class="inline check" title="面を塗りつぶすかどうか。外すと線だけになる">
+                <input type="checkbox" id="advertiser-fill" checked>
+                塗りつぶし
+              </label>
               <div class="seg" id="advertiser-grain">
                 <button class="chip is-active" data-egrain="day">日</button>
                 <button class="chip" data-egrain="month">月</button>
@@ -250,6 +257,10 @@
               <span class="muted small">表示するもの</span>
               <div class="seg" id="affiliate-parts"></div>
               <span class="muted small">売上の推移</span>
+              <label class="inline check" title="面を塗りつぶすかどうか。外すと線だけになる">
+                <input type="checkbox" id="affiliate-fill" checked>
+                塗りつぶし
+              </label>
               <div class="seg" id="affiliate-grain">
                 <button class="chip is-active" data-egrain="day">日</button>
                 <button class="chip" data-egrain="month">月</button>
@@ -474,6 +485,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609081337"></script>
+<script type="module" src="js/app.js?v=202609081402"></script>
 </body>
 </html>

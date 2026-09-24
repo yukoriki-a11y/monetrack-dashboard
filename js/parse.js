@@ -6,14 +6,16 @@
 //  * クリックデータには一意キーが無いので、内容から fingerprint を作り、
 //    まったく同じ内容が複数行あるときは通番 (dup_seq) を振って区別する。
 
-import { toIsoJst, toDateOnly, toNumber, clean, sha256Hex, hash128 } from './util.js?v=202609081924';
+import { toIsoJst, toDateOnly, toNumber, clean, sha256Hex, hash128 } from './util.js?v=202609241541';
 
 // ---- 見出し名のゆらぎ吸収 --------------------------------------------
 
 // fingerprint を作るときの区切り文字。データに現れない制御文字を使う。
 const SEP = String.fromCharCode(1);
 
-const norm = (s) =>
+// buildMap は見出しを辞書で完全一致で引くので、ここを通していない見出しは
+// 対応付けに失敗する。readFile 以外の入口（sync/sync.mjs）でも使うので公開する。
+export const norm = (s) =>
   String(s ?? '')
     .replace(/\s+/g, '')
     .replace(/[（）]/g, (c) => (c === '（' ? '(' : ')'))

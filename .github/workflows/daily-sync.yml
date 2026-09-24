@@ -1,0 +1,66 @@
+name: 毎日の取り込み
+
+# マネートラック → Supabase の日次取り込み。
+# 仕組みと、なぜログインを自動化しないのかは docs/daily-sync.md を見ること。
+#
+# 失敗すると GitHub から通知メールが届く（Actions の既定の動作）。
+# いちばんよくある失敗はセッション切れ。その場合は MT_COOKIE を入れ直す。
+
+on:
+  schedule:
+    # 21:00 UTC = 翌 06:00 JST。前日ぶんが出そろってから動かす。
+    - cron: '0 21 * * *'
+  # 手で動かせるようにしておく（期間を指定した取り直しにも使う）
+  workflow_dispatch:
+    inputs:
+      from:
+        description: '開始日 yyyy/mm/dd（空なら前日）'
+        required: false
+      to:
+        description: '終了日 yyyy/mm/dd（空なら前日）'
+        required: false
+      skip:
+        description: '飛ばす処理をカンマ区切りで（transactions,activity,clicks）'
+        required: false
+
+# 同時に2つ走ると、成り代わりの最中に別の実行が割り込んでセッションが壊れる
+concurrency:
+  group: daily-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 依存を入れる
+        working-directory: sync
+        run: npm install --no-audit --no-fund
+
+      # 外へつながずに、モジュールが読めるか・見出しの対応付けが生きているかだけ見る。
+      # ここで落ちれば、取得を終えたあとの取り込み直前でこけるより原因が分かりやすい。
+      - name: 下見
+        working-directory: sync
+        run: node selftest.mjs
+
+      - name: 取り込む
+        working-directory: sync
+        env:
+          MT_COOKIE: ${{ secrets.MT_COOKIE }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_EMAIL: ${{ secrets.SUPABASE_EMAIL }}
+          SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.from }}" ]; then ARGS="$ARGS --from ${{ inputs.from }}"; fi
+          if [ -n "${{ inputs.to }}" ];   then ARGS="$ARGS --to ${{ inputs.to }}"; fi
+          if [ -n "${{ inputs.skip }}" ]; then ARGS="$ARGS --skip ${{ inputs.skip }}"; fi
+          node sync.mjs $ARGS

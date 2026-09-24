@@ -4,6 +4,9 @@
 *.xls
 *.csv
 
+# 取り込みスクリプトの依存（GitHub Actions 側で入れる）
+sync/node_modules/
+
 # OS / エディタ
 Thumbs.db
 desktop.ini

@@ -125,6 +125,20 @@ GitHub Secrets に入れる。**値はリポジトリにも会話にも残さな
 
 取り込みRPCは `authenticated` にしか許可していないので、ログインして JWT を得てから呼ぶ。
 
+### `MT_COOKIE` の取り方
+
+セッションが切れるたびにこれをやる。**値は画面に出さず、そのまま貼る。**
+
+1. Chrome で `https://app.monetrack.com/ja` に管理者でログインする
+2. `F12` → **Application**（アプリケーション）タブ → 左の **Cookies** → `https://app.monetrack.com`
+3. `_session` で終わる名前のもの（Devise のセッション）と、あれば `remember_user_token` の
+   2つを、`名前=値; 名前=値` の形で1行にする
+4. GitHub → リポジトリ → **Settings** → **Secrets and variables** → **Actions**
+   → **New repository secret** → 名前 `MT_COOKIE` に貼る
+
+コピーした値はどこにも残さない（メモ帳・チャット・コミットに置かない）。
+ログアウトすると無効になるので、**取り込み用のブラウザではログアウトしない**。
+
 ## 注意
 
 - CSV形式は ① ③ では非対応（`.csv` を付けても JSON が返る）。xlsx のみ

@@ -106,6 +106,27 @@ create index if not exists conversions_status_idx      on public.conversions (st
 create index if not exists conversions_ad_name_idx     on public.conversions (ad_name);
 create index if not exists conversions_product_idx     on public.conversions (product_name);
 
+-- キーワード検索用。ilike '%語%' はふつうの索引が効かないので、
+-- 6列をつないだ文字列に pg_trgm（3文字単位）の索引を張る。
+-- ⚠ ここの式と dash_conv_where の $16 の式は同じでなければならない。
+--    片方だけ直すと、エラーは出ないまま索引が使われなくなる。
+-- pg_trgm が無い環境（PGlite での検証など）では作らずに進む。検索は遅いだけで動く。
+do $$
+begin
+  create extension if not exists pg_trgm;
+  execute $ix$
+    create index if not exists conversions_search_trgm
+      on public.conversions using gin (
+        (coalesce(product_name,'') || ' ' || coalesce(ad_name,'') || ' ' ||
+         coalesce(affiliate_id,'') || ' ' || coalesce(campaign,'') || ' ' ||
+         coalesce(order_id,'') || ' ' || coalesce(first_referrer,''))
+        gin_trgm_ops
+      )
+  $ix$;
+exception when others then
+  raise notice 'pg_trgm が使えないので検索用の索引は作りませんでした: %', sqlerrm;
+end $$;
+
 create index if not exists clicks_clicked_at_idx on public.clicks (clicked_at);
 create index if not exists clicks_advertiser_idx on public.clicks (advertiser_id, clicked_at);
 create index if not exists clicks_affiliate_idx  on public.clicks (affiliate_id, clicked_at);
@@ -631,12 +652,10 @@ language sql immutable as $$
     and ($14::text[] is null or c.device        = any($14::text[]))
     and ($15::text[] is null or c.os            = any($15::text[]))
     and ($16::text is null or $16::text = ''
-         or c.product_name   ilike '%' || $16::text || '%'
-         or c.ad_name        ilike '%' || $16::text || '%'
-         or c.affiliate_id   ilike '%' || $16::text || '%'
-         or c.campaign       ilike '%' || $16::text || '%'
-         or c.order_id       ilike '%' || $16::text || '%'
-         or c.first_referrer ilike '%' || $16::text || '%')
+         or (coalesce(c.product_name,'') || ' ' || coalesce(c.ad_name,'') || ' ' ||
+             coalesce(c.affiliate_id,'') || ' ' || coalesce(c.campaign,'') || ' ' ||
+             coalesce(c.order_id,'') || ' ' || coalesce(c.first_referrer,''))
+            ilike '%' || $16::text || '%')
   $w$
 $$;
 

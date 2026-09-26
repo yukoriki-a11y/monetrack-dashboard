@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609241541';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202609241541';
-import * as ch from './charts.js?v=202609241541';
-import { renderTable, resetSort } from './table.js?v=202609241541';
-import { initImporter, loadImportHistory } from './importer.js?v=202609241541';
-import { dayKind, holidayName } from './holiday.js?v=202609241541';
-import * as cfg from './settings.js?v=202609241541';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609261010';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202609261010';
+import * as ch from './charts.js?v=202609261010';
+import { renderTable, resetSort } from './table.js?v=202609261010';
+import { initImporter, loadImportHistory } from './importer.js?v=202609261010';
+import { dayKind, holidayName } from './holiday.js?v=202609261010';
+import * as cfg from './settings.js?v=202609261010';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -2571,6 +2571,16 @@ async function renderDetail() {
     { key: 'os', label: 'OS', type: 'text' },
     { key: 'first_referrer', label: '初回リファラ', type: 'text', cellClass: 'trunc',
       render: (r) => hostLink(r.first_referrer) },
+    // 報酬率がクッキーの古さで下がるので、初回クリックからの日数が要る。
+    // ステータス変更日は、古い成果がまとめて登録された日を見つけるのに使う。
+    { key: 'first_click_at', label: '初回クリック', cellClass: 'num',
+      render: (r) => fmtDateTime(r.first_click_at) },
+    { key: 'click_age', label: '初回からの日数', cellClass: 'num', sortKey: 'first_click_at',
+      render: (r) => daysBetween(r.first_click_at, r.occurred_at) },
+    { key: 'last_click_at', label: '最終クリック', cellClass: 'num',
+      render: (r) => fmtDateTime(r.last_click_at) },
+    { key: 'status_changed_at', label: 'ステータス変更', cellClass: 'num',
+      render: (r) => fmtDateTime(r.status_changed_at) },
     { key: 'order_id', label: '注文ID', type: 'text' },
   ];
   const cols = $('#detail-allcols').checked ? [...core, ...extra] : core;
@@ -2579,9 +2589,11 @@ async function renderDetail() {
     empty: '該当する成果がありません',
     externalSort: d.sort,                       // 並べ替えはサーバ側
     onSort: (col) => {
-      d.sort = d.sort.key === col.key
-        ? { key: col.key, dir: d.sort.dir === 'asc' ? 'desc' : 'asc' }
-        : { key: col.key, dir: col.type === 'text' ? 'asc' : 'desc' };
+      // 計算して出している列（初回からの日数）は、元になる列で並べ替える
+      const sk = col.sortKey || col.key;
+      d.sort = d.sort.key === sk
+        ? { key: sk, dir: d.sort.dir === 'asc' ? 'desc' : 'asc' }
+        : { key: sk, dir: col.type === 'text' ? 'asc' : 'desc' };
       d.page = 0;
       renderDetail();
     },
@@ -2811,10 +2823,13 @@ async function exportCsv(kind) {
       if (!all.length) { toast('出力する成果がありません'); return; }
       downloadCsv(`成果データ_${stamp}.csv`,
         ['発生日時', 'ステータス', '広告主', 'アフィリエイター', '商品名', '広告名', 'キャンペーン',
-          '数量', '販売価格', '報酬額', '報酬率', '支払い状況', 'デバイス', 'OS', '初回リファラ', '注文ID'],
+          '数量', '販売価格', '報酬額', '報酬率', '支払い状況', 'デバイス', 'OS', '初回リファラ',
+          '初回クリック', '初回からの日数', '最終クリック', 'ステータス変更', '注文ID'],
         all.map((r) => [
           r.occurred_at, r.status, r.advertiser_id, r.affiliate_id, r.product_name, r.ad_name, r.campaign,
-          r.qty, r.sale_price, r.reward, r.reward_rate, r.pay_status, r.device, r.os, r.first_referrer, r.order_id]));
+          r.qty, r.sale_price, r.reward, r.reward_rate, r.pay_status, r.device, r.os, r.first_referrer,
+          r.first_click_at, daysBetween(r.first_click_at, r.occurred_at), r.last_click_at, r.status_changed_at,
+          r.order_id]));
       toast(`${num(all.length)} 件を出力しました`);
     } catch (e) {
       toast('CSVを作れませんでした: ' + e.message);

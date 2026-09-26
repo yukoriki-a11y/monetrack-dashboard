@@ -675,7 +675,9 @@ create or replace function public.dash_conversions(
   order_id text, occurred_at timestamptz, advertiser_id text, affiliate_id text,
   product_name text, ad_name text, campaign text, qty numeric, sale_price numeric,
   reward numeric, reward_rate text, status text, pay_status text,
-  device text, os text, first_referrer text, total_count bigint
+  device text, os text, first_referrer text,
+  first_click_at timestamptz, last_click_at timestamptz, status_changed_at timestamptz,
+  total_count bigint
 ) language plpgsql security invoker stable as $fn$
 declare
   -- 空配列は「全部外した」なので、どれにも当たらない値にしておく
@@ -717,6 +719,9 @@ begin
     when 'reward_rate'    then 'c.reward_rate'
     when 'order_id'       then 'c.order_id'
     when 'first_referrer' then 'c.first_referrer'
+    when 'first_click_at'    then 'c.first_click_at'
+    when 'last_click_at'     then 'c.last_click_at'
+    when 'status_changed_at' then 'c.status_changed_at'
     when 'qty'            then 'c.qty'
     when 'sale_price'     then 'c.sale_price'
     when 'reward'         then 'c.reward'
@@ -730,7 +735,8 @@ begin
     'select c.order_id, c.occurred_at, c.advertiser_id, c.affiliate_id,
             c.product_name, c.ad_name, c.campaign, c.qty, c.sale_price,
             c.reward, c.reward_rate, c.status, c.pay_status,
-            c.device, c.os, c.first_referrer, ' || v_total::text || '::bigint
+            c.device, c.os, c.first_referrer,
+            c.first_click_at, c.last_click_at, c.status_changed_at, ' || v_total::text || '::bigint
      from public.conversions c
      where ' || w || '
      order by ' || v_sort || ' ' || v_dir || ' nulls last

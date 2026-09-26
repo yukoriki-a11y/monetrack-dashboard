@@ -102,6 +102,19 @@ export function toDateOnly(value) {
 }
 
 // timestamptz → 'MM/DD HH:MM'（JST）
+// 初回クリックから成果までの間隔。報酬率がこの長さで決まる案件があるので、
+// 「何日前のクッキーか」がひと目で分かるようにする。
+export function daysBetween(fromIso, toIso) {
+  if (!fromIso || !toIso) return '—';
+  const a = new Date(fromIso);
+  const b = new Date(toIso);
+  if (Number.isNaN(+a) || Number.isNaN(+b)) return '—';
+  const h = (b - a) / 3600000;
+  if (h < 0) return '—';
+  if (h < 24) return `${h.toFixed(1)}時間`;
+  return `${Math.floor(h / 24)}日`;
+}
+
 export function fmtDateTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);

@@ -44,6 +44,22 @@ export class Supa {
     return text ? JSON.parse(text) : null;
   }
 
+  // 取り込み履歴に1行残す。画面の「取り込み履歴」に出る。
+  // これが無いと、あとから「誰がいつ入れたのか」を追えない。
+  // imported_by はログインしている利用者（sync 用アカウント）が自動で入る。
+  record({ fileName, fileHash, kind, advertiserId = null, rowCount = 0, inserted = 0, updated = 0, skipped = 0 }) {
+    return this.rpc('import_record', {
+      p_file_name: fileName,
+      p_file_hash: fileHash,
+      p_kind: kind,
+      p_advertiser_id: advertiserId,
+      p_row_count: rowCount,
+      p_inserted: inserted,
+      p_updated: updated,
+      p_skipped: skipped,
+    });
+  }
+
   // 大きい配列は分けて送る。1回で送ると本文が大きすぎて弾かれる。
   async rpcChunked(name, rows, build, onProgress) {
     const totals = {};

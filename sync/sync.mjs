@@ -7,6 +7,7 @@
 //
 // 仕組みと、なぜログインを自動化しないのかは docs/daily-sync.md に書いてある。
 
+import { createHash } from 'node:crypto';
 import * as XLSX from 'xlsx';
 import { Session, readAdminContext, fetchTransactions, fetchAffiliateActivityCsv,
   withMerchant, fetchRawClick } from './mt.mjs';
@@ -30,6 +31,11 @@ const MERCHANTS = [
 // ---- 小物 ----------------------------------------------------------------
 
 const log = (...a) => console.log(...a);
+
+// 取り込み履歴の照合キー。画面から入れたときと同じで、中身が同じなら同じ鍵になる。
+const sha256 = (data) => createHash('sha256')
+  .update(typeof data === 'string' ? Buffer.from(data, 'utf8') : data)
+  .digest('hex');
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -86,9 +92,12 @@ async function main() {
     const { header, rows } = readSheet(buf);
     const parsed = parseConversions(header, rows);
     log(`① 成果: ${rows.length} 行を読み、${parsed.rows.length} 行を取り込みます`);
+    const name = `自動取込：成果 ${from}〜${to}`;
     const t = await supa.rpcChunked('import_conversions_chunk', parsed.rows,
-      (part) => ({ p_rows: part, p_file_name: `auto:${from}_${to}` }),
+      (part) => ({ p_rows: part, p_file_name: name }),
       (done, all) => log(`   送信中 ${done}/${all}`));
+    await supa.record({ fileName: name, fileHash: sha256(buf), kind: 'conversions',
+      rowCount: rows.length, inserted: t.inserted || 0, updated: t.updated || 0, skipped: t.stayed || 0 });
     summary.push(`成果 新規${t.inserted || 0} / 更新${t.updated || 0} / 据置${t.stayed || 0}`);
   }
 
@@ -102,6 +111,9 @@ async function main() {
     const t = await supa.rpcChunked('import_affiliate_daily', rows,
       (part) => ({ p_rows: part }),
       (done, all) => log(`   送信中 ${done}/${all}`));
+    await supa.record({ fileName: `自動取込：日次実績 ${y}年${m}月`, fileHash: sha256(csv),
+      kind: 'affiliate_daily', rowCount: rows.length,
+      inserted: t.inserted || 0, updated: t.updated || 0, skipped: dropped });
     summary.push(`日次実績 新規${t.inserted || 0} / 更新${t.updated || 0}`);
   }
 
@@ -114,8 +126,12 @@ async function main() {
       const { header, rows } = readSheet(buf);
       if (!rows.length) { log(`③ ${mch.slug}: 0 行`); continue; }
       const parsed = parseClicks(header, rows);
+      const name = `自動取込：クリック ${mch.slug} ${from}〜${to}`;
       const t = await supa.rpcChunked('import_clicks_chunk', parsed.rows,
-        (part) => ({ p_rows: part, p_file_name: `auto:${mch.slug}:${from}_${to}`, p_advertiser_id: mch.slug }));
+        (part) => ({ p_rows: part, p_file_name: name, p_advertiser_id: mch.slug }));
+      await supa.record({ fileName: name, fileHash: sha256(buf), kind: 'clicks',
+        advertiserId: mch.slug, rowCount: rows.length,
+        inserted: t.inserted || 0, updated: t.updated || 0, skipped: t.skipped || 0 });
       ins += t.inserted || 0;
       skipped += t.skipped || 0;
       log(`③ ${mch.slug}: ${parsed.rows.length} 行 → 新規${t.inserted || 0} / 重複${t.skipped || 0}`);

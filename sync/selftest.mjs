@@ -12,7 +12,9 @@
 // 外へは一切つながない。合成データだけで完結する。
 
 import * as XLSX from 'xlsx';
+import { createHash } from 'node:crypto';
 import { toAffiliateDaily } from './activity.mjs';
+import { Supa } from './supa.mjs';
 
 globalThis.XLSX = XLSX;
 const { parseConversions, parseClicks, norm } = await import('../js/parse.js');
@@ -39,6 +41,17 @@ const toBuf = (aoa) => {
 
 console.log('■ モジュールの読み込み');
 ok('js/parse.js を Node から読めた', 'クエリ付きの import も通る');
+
+console.log('■ 取り込み履歴まわり');
+try {
+  // 外へはつながず、呼び出し口があることと鍵の作り方だけ見る。
+  // 取得を全部終えたあとで「record が無い」と落ちるのを防ぐため。
+  const s = new Supa({ url: 'https://example.invalid', anonKey: 'dummy' });
+  if (typeof s.record !== 'function') ng('record がある', '見つからない');
+  else ok('record がある');
+  const h = createHash('sha256').update(Buffer.from('abc', 'utf8')).digest('hex');
+  eq('ファイル鍵の長さ', h.length, 64);
+} catch (e) { ng('取り込み履歴まわり', e.message); }
 
 console.log('■ 見出しの正規化');
 eq('全角カッコ', norm('お支払い状況（1）'), 'お支払い状況(1)');

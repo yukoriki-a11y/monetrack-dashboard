@@ -22,6 +22,9 @@ on:
       skip:
         description: '飛ばす処理をカンマ区切りで（transactions,activity,clicks）'
         required: false
+      refresh_days:
+        description: '成果を何日ぶんさかのぼって取り直すか（空なら月曜のみ60日）'
+        required: false
 
 # 同時に2つ走ると、成り代わりの最中に別の実行が割り込んでセッションが壊れる
 concurrency:
@@ -63,4 +66,12 @@ jobs:
           if [ -n "${{ inputs.from }}" ]; then ARGS="$ARGS --from ${{ inputs.from }}"; fi
           if [ -n "${{ inputs.to }}" ];   then ARGS="$ARGS --to ${{ inputs.to }}"; fi
           if [ -n "${{ inputs.skip }}" ]; then ARGS="$ARGS --skip ${{ inputs.skip }}"; fi
+
+          # 成果の承認・却下は発生から数週間あとに決まる。前日ぶんしか取らないと
+          # 保留のまま固まってしまうので、週に1回さかのぼって取り直す。
+          # 毎日やると取得も送信も重くなるので月曜だけにする。
+          REFRESH="${{ inputs.refresh_days }}"
+          if [ -z "$REFRESH" ] && [ "$(TZ=Asia/Tokyo date +%u)" = "1" ]; then REFRESH=60; fi
+          if [ -n "$REFRESH" ] && [ "$REFRESH" != "0" ]; then ARGS="$ARGS --refresh-days $REFRESH"; fi
+
           node sync.mjs $ARGS

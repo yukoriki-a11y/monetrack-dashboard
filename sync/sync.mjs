@@ -4,6 +4,8 @@
 //   node sync/sync.mjs --date 2026/09/20
 //   node sync/sync.mjs --from 2026/09/01 --to 2026/09/07
 //   node sync/sync.mjs --skip clicks    … 一部だけ動かす（transactions / activity / clicks）
+//   node sync/sync.mjs --refresh-days 60 … 成果だけ60日ぶんさかのぼって取り直す
+//                                          （承認・却下は後から決まるため）
 //
 // 仕組みと、なぜログインを自動化しないのかは docs/daily-sync.md に書いてある。
 
@@ -71,10 +73,23 @@ async function main() {
 
   const today = jstToday();
   const yesterday = new Date(today.getTime() - 24 * 3600 * 1000);
-  const from = arg('from') || arg('date') || ymd(yesterday);
   const to = arg('to') || arg('date') || ymd(yesterday);
 
-  log(`対象期間: ${from} 〜 ${to}（日本時間）`);
+  // クリックは後から変わらないので、常に前日ぶんだけでよい。
+  const fromClicks = arg('from') || arg('date') || ymd(yesterday);
+
+  // 成果は違う。発生時は「保留」で、承認・却下は数週間あとに決まる。
+  // 前日ぶんしか取りにいかないと、保留のまま固まって承認率が出せない。
+  // そこで時々さかのぼって取り直す（--refresh-days）。
+  // 同じ注文IDは上書きされるので、何度取り直しても二重にはならない。
+  const refreshDays = Number(arg('refresh-days') || 0);
+  let fromConv = fromClicks;
+  if (refreshDays > 0 && !arg('from') && !arg('date')) {
+    fromConv = ymd(new Date(today.getTime() - refreshDays * 24 * 3600 * 1000));
+    log(`ステータスの取り直し: ${refreshDays} 日ぶんさかのぼります`);
+  }
+
+  log(`対象期間: 成果 ${fromConv} 〜 ${to} / クリック ${fromClicks} 〜 ${to}（日本時間）`);
 
   const supa = new Supa({ url: process.env.SUPABASE_URL, anonKey: process.env.SUPABASE_ANON_KEY });
   await supa.signIn(process.env.SUPABASE_EMAIL, process.env.SUPABASE_PASSWORD);
@@ -88,11 +103,11 @@ async function main() {
 
   // ① 成果データ
   if (!skip.has('transactions')) {
-    const buf = await fetchTransactions(s, from, to);
+    const buf = await fetchTransactions(s, fromConv, to);
     const { header, rows } = readSheet(buf);
     const parsed = parseConversions(header, rows);
     log(`① 成果: ${rows.length} 行を読み、${parsed.rows.length} 行を取り込みます`);
-    const name = `自動取込：成果 ${from}〜${to}`;
+    const name = `自動取込：成果 ${fromConv}〜${to}`;
     const t = await supa.rpcChunked('import_conversions_chunk', parsed.rows,
       (part) => ({ p_rows: part, p_file_name: name }),
       (done, all) => log(`   送信中 ${done}/${all}`));
@@ -122,11 +137,11 @@ async function main() {
     let ins = 0;
     let skipped = 0;
     for (const mch of MERCHANTS) {
-      const buf = await withMerchant(s, ctx, mch, () => fetchRawClick(s, mch.slug, from, to));
+      const buf = await withMerchant(s, ctx, mch, () => fetchRawClick(s, mch.slug, fromClicks, to));
       const { header, rows } = readSheet(buf);
       if (!rows.length) { log(`③ ${mch.slug}: 0 行`); continue; }
       const parsed = parseClicks(header, rows);
-      const name = `自動取込：クリック ${mch.slug} ${from}〜${to}`;
+      const name = `自動取込：クリック ${mch.slug} ${fromClicks}〜${to}`;
       const t = await supa.rpcChunked('import_clicks_chunk', parsed.rows,
         (part) => ({ p_rows: part, p_file_name: name, p_advertiser_id: mch.slug }));
       await supa.record({ fileName: name, fileHash: sha256(buf), kind: 'clicks',

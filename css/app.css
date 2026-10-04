@@ -488,8 +488,11 @@ label.inline.status.st-ng   .dot { background: var(--bad); }
    余りをもらう（余りが無ければ 300px で下げ止まる）。 */
 .v-summary {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto minmax(300px, 1fr);
-  grid-auto-rows: auto;
+  /* auto だと高さが決まったグリッドの中で縮められてしまい、カードが
+     40px まで潰れる。max-content なら中身ぶんを確保して、はみ出た分は
+     このコンテナが縦に送る。 */
+  grid-template-rows: max-content max-content max-content minmax(300px, 1fr);
+  grid-auto-rows: max-content;
   align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;

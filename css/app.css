@@ -558,6 +558,26 @@ table.matrix thead th.rowhead { z-index: 4; }
 /* 直近の列を少し強調する */
 table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 
+/* 日ごとの順位表。1マスに「相手」「売上」「その日に占める割合」を積む。
+   行は順位なので、同じ行でも日によって中身が入れ替わる。 */
+table.matrix.rank th.rowhead { min-width: 56px; text-align: center; }
+table.matrix.rank td { min-width: 150px; padding: 5px 10px; }
+table.matrix.rank .rank-name {
+  text-align: left;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+table.matrix.rank .rank-name .ent-link { font-size: 11px; }
+table.matrix.rank .rank-val { font-size: 12px; }
+table.matrix.rank .rank-share {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+/* 首位だけ少し強く。目で追う起点になる */
+table.matrix.rank tbody tr:first-child .rank-val { font-weight: 650; }
+
 /* 比較: 左に選択リスト、右に重ねた線グラフ、下に合計表 */
 .v-compare {
   grid-template-columns: minmax(230px, .5fr) minmax(0, 1.5fr);

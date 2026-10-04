@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202609280827">
+<link rel="stylesheet" href="css/app.css?v=202610050815">
 </head>
 <body>
 
@@ -195,6 +195,33 @@
             <table id="t-summary" class="matrix"></table>
           </div>
         </div>
+        <!-- 日ごとの順位。列ごとに並べ替えるので、行は「順位」であって同じ相手ではない -->
+        <div class="card">
+          <div class="card-head">
+            <h2>日別 アフィリエイターランキング</h2>
+            <div class="row wrap">
+              <span class="muted small" id="rank-aff-note"></span>
+              <button class="btn sm" data-export="rank-affiliate">CSV</button>
+            </div>
+          </div>
+          <div class="matrix-wrap" id="rank-aff-wrap">
+            <table id="t-rank-aff" class="matrix rank"></table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>日別 広告主ランキング</h2>
+            <div class="row wrap">
+              <span class="muted small" id="rank-adv-note"></span>
+              <button class="btn sm" data-export="rank-advertiser">CSV</button>
+            </div>
+          </div>
+          <div class="matrix-wrap" id="rank-adv-wrap">
+            <table id="t-rank-adv" class="matrix rank"></table>
+          </div>
+        </div>
+
         <div class="card">
           <h2>売上の推移</h2>
           <div class="chart-wrap"><canvas id="c-summary-line"></canvas></div>
@@ -503,6 +530,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202609280827"></script>
+<script type="module" src="js/app.js?v=202610050815"></script>
 </body>
 </html>

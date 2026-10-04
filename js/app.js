@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202609280827';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202609280827';
-import * as ch from './charts.js?v=202609280827';
-import { renderTable, resetSort } from './table.js?v=202609280827';
-import { initImporter, loadImportHistory } from './importer.js?v=202609280827';
-import { dayKind, holidayName } from './holiday.js?v=202609280827';
-import * as cfg from './settings.js?v=202609280827';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202610050815';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202610050815';
+import * as ch from './charts.js?v=202610050815';
+import { renderTable, resetSort } from './table.js?v=202610050815';
+import { initImporter, loadImportHistory } from './importer.js?v=202610050815';
+import { dayKind, holidayName } from './holiday.js?v=202610050815';
+import * as cfg from './settings.js?v=202610050815';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -37,6 +37,7 @@ const state = {
   grain: 'day',
   dim: 'product',
   summaryRows: [],      // サマリーの日別行
+  dayRanks: {},         // 日ごとの順位（軸 → { days, ranked }）。CSV出力でも使う
   affiliates: [],       // アフィリエイター一覧のキャッシュ
   compare: newPickState('affiliate', true),   // 広告主/アフィリエイター（内訳を塗り分け）
   list: {               // 広告主タブ / アフィリエイタータブ
@@ -1059,6 +1060,107 @@ async function renderSummary() {
   ch.line('c-summary-line', rows.map((r) => r.md), [
     { label: '売上', data: rows.map((r) => r.sales), fill: true },
   ], { money: true });
+
+  renderDayRanks(f, rows);
+}
+
+// ---- 日ごとの順位 --------------------------------------------------------
+//
+// 日別明細と同じ「日付を横に並べる」作りだが、行は順位であって同じ相手ではない。
+// 列ごとに並べ替えるので、1位の中身は日によって入れ替わる。
+//
+// 日ごとに上位を取り直すには本来1日ずつ問い合わせることになるが、
+// 3か月だと90回になってしまう。そこで期間全体の上位をまとめて取り、
+// 日ごとに並べ替え直している。割合の分母は日別明細と同じ実際の日合計を
+// 使うので、取りこぼしがあっても％は狂わない（合計が100%に足りない形で出る）。
+
+const RANK_TOP = 10;
+const RANK_POOL = 60;
+
+const RANK_VIEWS = [
+  { dim: 'affiliate', table: 't-rank-aff', wrap: 'rank-aff-wrap', note: 'rank-aff-note' },
+  { dim: 'advertiser', table: 't-rank-adv', wrap: 'rank-adv-wrap', note: 'rank-adv-note' },
+];
+
+async function renderDayRanks(f, days) {
+  for (const v of RANK_VIEWS) {
+    const table = $(`#${v.table}`);
+    if (!table) continue;
+    try {
+      const series = await api.compare(f, v.dim, null, 'day', RANK_POOL);
+      const ranked = rankByDay(days, series);
+      state.dayRanks[v.dim] = { days, ranked };
+      renderRankMatrix(table, days, ranked, v.dim, $(`#${v.wrap}`));
+      const covered = days.length
+        ? days.reduce((a, d) => a + (ranked.get(d.bucket)?.covered || 0), 0)
+        / Math.max(1, days.reduce((a, d) => a + d.sales, 0)) : 0;
+      $(`#${v.note}`).textContent = `上位${RANK_TOP}件で期間全体の ${pct(covered * 100)}`;
+    } catch (err) {
+      table.replaceChildren(el('tbody', {}, el('tr', {},
+        el('td', { class: 'empty', text: `読み込めませんでした: ${err.message}` }))));
+    }
+  }
+}
+
+// 日付 → その日の上位（売上の多い順）
+function rankByDay(days, series) {
+  const byDay = new Map(days.map((d) => [d.bucket, []]));
+  for (const r of series) {
+    const key = String(r.bucket).slice(0, 10);
+    const list = byDay.get(key);
+    if (list) list.push({ name: r.series, sales: Number(r.sales) || 0 });
+  }
+  const out = new Map();
+  for (const d of days) {
+    const list = (byDay.get(d.bucket) || [])
+      .filter((x) => x.sales > 0)
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, RANK_TOP);
+    out.set(d.bucket, { list, covered: list.reduce((a, x) => a + x.sales, 0) });
+  }
+  return out;
+}
+
+function renderRankMatrix(table, days, ranked, dim, wrap) {
+  if (!days.length) {
+    table.replaceChildren(el('tbody', {}, el('tr', {},
+      el('td', { class: 'empty', text: '期間を選んでください' }))));
+    return;
+  }
+
+  const last = days.length - 1;
+  const cls = (d, i) => [
+    d.kind ? `is-${d.kind}` : '',
+    i === last ? 'is-latest' : '',
+  ].filter(Boolean).join(' ') || null;
+
+  const cell = (d, i, rank) => {
+    const hit = ranked.get(d.bucket)?.list[rank];
+    if (!hit) return el('td', { class: cls(d, i) }, el('span', { class: 'muted', text: '—' }));
+    // 割合の分母は、日別明細に出ているその日の売上そのもの
+    const share = d.sales > 0 ? (hit.sales / d.sales) * 100 : 0;
+    return el('td', { class: cls(d, i) },
+      el('div', { class: 'rank-name' }, nameNode(dim, hit.name)),
+      el('div', { class: 'rank-val' },
+        yen(hit.sales),
+        el('span', { class: 'rank-share', text: pct(share) })));
+  };
+
+  table.replaceChildren(
+    el('thead', {}, el('tr', {},
+      el('th', { class: 'rowhead', text: '順位' }),
+      ...days.map((d, i) => el('th', {
+        class: cls(d, i),
+        title: d.holiday ? `${d.bucket} ${d.holiday}` : d.bucket,
+      },
+      d.md,
+      el('span', { class: 'wd', text: d.holiday ? '祝' : d.wd }))))),
+    el('tbody', {}, ...Array.from({ length: RANK_TOP }, (_, rank) => el('tr', {},
+      el('th', { class: 'rowhead', text: `${rank + 1}位` }),
+      ...days.map((d, i) => cell(d, i, rank))))),
+  );
+
+  if (wrap) wrap.scrollLeft = wrap.scrollWidth;
 }
 
 const WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'];
@@ -2778,6 +2880,21 @@ async function exportCsv(kind) {
     downloadCsv(`日別売上_${stamp}.csv`,
       ['日付', '売上', 'アフィリエイター報酬額', `想定マネートラック報酬(${mtRate()}%)`, '成果件数'],
       (state.summaryRows || []).map((r) => [r.bucket, r.sales, r.reward, r.mt, r.conversions]));
+  } else if (kind === 'rank-affiliate' || kind === 'rank-advertiser') {
+    const dim = kind === 'rank-affiliate' ? 'affiliate' : 'advertiser';
+    const r = state.dayRanks?.[dim];
+    if (!r) { toast('まだ読み込めていません'); return; }
+    const label = ENT_LABEL[dim];
+    const rows = [];
+    for (const d of r.days) {
+      const hit = r.ranked.get(d.bucket);
+      (hit?.list || []).forEach((x, i) => rows.push([
+        d.bucket, i + 1, x.name, x.sales,
+        d.sales > 0 ? ((x.sales / d.sales) * 100).toFixed(1) : '', d.sales,
+      ]));
+    }
+    downloadCsv(`日別${label}ランキング_${stamp}.csv`,
+      ['日付', '順位', label, '売上', '占有率(%)', 'その日の売上合計'], rows);
   } else if (kind === 'compare') {
     // グラフに出ている内訳をそのまま（系列 × 期間）出す
     downloadCsv(`内訳_${stamp}.csv`,

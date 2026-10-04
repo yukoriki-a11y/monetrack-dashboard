@@ -82,11 +82,16 @@ async function main() {
   // 前日ぶんしか取りにいかないと、保留のまま固まって承認率が出せない。
   // そこで時々さかのぼって取り直す（--refresh-days）。
   // 同じ注文IDは上書きされるので、何度取り直しても二重にはならない。
-  const refreshDays = Number(arg('refresh-days') || 0);
+  //
+  // 既定でも数日さかのぼる。Cookie切れで2〜3日止まることが実際にあり
+  // （2026-10-03・04）、前日ぶんだけだと人が気づいて手で入れ直すまで
+  // 穴が残ってしまうため。次に動いたときに勝手に埋まるようにしておく。
+  const CATCH_UP_DAYS = 4;
+  const refreshDays = Number(arg('refresh-days') || 0) || CATCH_UP_DAYS;
   let fromConv = fromClicks;
-  if (refreshDays > 0 && !arg('from') && !arg('date')) {
+  if (!arg('from') && !arg('date')) {
     fromConv = ymd(new Date(today.getTime() - refreshDays * 24 * 3600 * 1000));
-    log(`ステータスの取り直し: ${refreshDays} 日ぶんさかのぼります`);
+    if (refreshDays > CATCH_UP_DAYS) log(`ステータスの取り直し: ${refreshDays} 日ぶんさかのぼります`);
   }
 
   log(`対象期間: 成果 ${fromConv} 〜 ${to} / クリック ${fromClicks} 〜 ${to}（日本時間）`);

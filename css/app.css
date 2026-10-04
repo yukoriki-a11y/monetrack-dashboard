@@ -482,10 +482,17 @@ label.inline.status.st-ng   .dot { background: var(--bad); }
   grid-auto-rows: minmax(0, 1fr);
 }
 
-/* サマリー: 上に日別明細（高さは中身ぶんだけ）、下に売上の推移 */
+/* サマリー: 日別明細 → 日別ランキング2つ → 売上の推移。
+   他のページは1画面に収める作りだが、ここは順位10行×2で収まらないので
+   縦に送れるようにする。カードは中身ぶんの高さを取り、グラフだけが
+   余りをもらう（余りが無ければ 300px で下げ止まる）。 */
 .v-summary {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(300px, 1fr);
+  grid-auto-rows: auto;
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 #mt-rate { width: 62px; text-align: right; }
 

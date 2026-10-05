@@ -570,21 +570,56 @@ table.matrix .is-latest { background: var(--accent-soft); font-weight: 650; }
 
 /* 日ごとの順位表。1マスに「相手」「売上」「その日に占める割合」を積む。
    行は順位なので、同じ行でも日によって中身が入れ替わる。 */
-table.matrix.rank th.rowhead { min-width: 56px; text-align: center; }
-table.matrix.rank td { min-width: 150px; padding: 5px 10px; }
+/* 列の幅は日別明細と同じにする。上から下へ同じ日付が縦に並ぶので、
+   どの列がいつなのかを目で追える（横スクロールも app.js 側で連動させている）。 */
+table.matrix.rank td { padding: 5px 10px; }
 table.matrix.rank .rank-name {
   text-align: left;
-  max-width: 150px;
+  max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 table.matrix.rank .rank-name .ent-link { font-size: 11px; }
+/* 100px に金額と割合を横並びで入れると溢れるので、行を分ける */
 table.matrix.rank .rank-val { font-size: 12px; }
 table.matrix.rank .rank-share {
-  margin-left: 6px;
+  display: block;
   font-size: 11px;
   color: var(--ink-3);
 }
+
+/* 内訳を開く矢印。名前の右に小さく置く */
+table.matrix.rank .rank-name { display: flex; align-items: center; gap: 2px; }
+table.matrix.rank .rank-name .ent-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rank-more {
+  flex: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0 1px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--ink-3);
+}
+.rank-more:hover { color: var(--ink); }
+
+/* 開いた内訳。狭いので名前と金額は行を分ける */
+.rank-sub {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--grid);
+  text-align: left;
+}
+.rank-sub-row + .rank-sub-row { margin-top: 3px; }
+.rank-sub-name {
+  display: block;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rank-sub-name .ent-link { font-size: 10px; }
+.rank-sub-val { display: block; font-size: 10px; text-align: right; color: var(--ink-2); }
+.rank-sub-note { font-size: 10px; color: var(--ink-3); }
 /* 首位だけ少し強く。目で追う起点になる */
 table.matrix.rank tbody tr:first-child .rank-val { font-weight: 650; }
 

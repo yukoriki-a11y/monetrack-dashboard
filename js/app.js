@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202610050833';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202610050833';
-import * as ch from './charts.js?v=202610050833';
-import { renderTable, resetSort } from './table.js?v=202610050833';
-import { initImporter, loadImportHistory } from './importer.js?v=202610050833';
-import { dayKind, holidayName } from './holiday.js?v=202610050833';
-import * as cfg from './settings.js?v=202610050833';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202610051239';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202610051239';
+import * as ch from './charts.js?v=202610051239';
+import { renderTable, resetSort } from './table.js?v=202610051239';
+import { initImporter, loadImportHistory } from './importer.js?v=202610051239';
+import { dayKind, holidayName } from './holiday.js?v=202610051239';
+import * as cfg from './settings.js?v=202610051239';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -1077,6 +1077,41 @@ async function renderSummary() {
 const RANK_TOP = 10;
 const RANK_POOL = 60;
 
+// 内訳で見る軸。アフィリエイターなら広告主、広告主ならアフィリエイター。
+const OTHER_DIM = { affiliate: 'advertiser', advertiser: 'affiliate' };
+const RANK_SUB = 5;
+
+// マスの矢印。開いたときに、その日・その相手だけを取りにいく。
+async function toggleRankSub(btn, body, dim, day, name) {
+  const opening = body.hidden;
+  body.hidden = !opening;
+  btn.textContent = opening ? '▾' : '▸';
+  btn.setAttribute('aria-expanded', String(opening));
+  if (!opening || body.dataset.loaded) return;
+
+  body.dataset.loaded = '1';
+  body.replaceChildren(el('div', { class: 'rank-sub-note', text: '…' }));
+  try {
+    const other = OTHER_DIM[dim];
+    const f = { ...state.filter, from: day, to: day };
+    const scope = dim === 'affiliate' ? { affiliates: [name] } : { advertisers: [name] };
+    const rows = await api.compare(f, other, null, 'day', RANK_SUB, scope);
+    const list = (rows || [])
+      .map((r) => ({ name: r.series, sales: Number(r.sales) || 0 }))
+      .filter((x) => x.sales > 0)
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, RANK_SUB);
+    body.replaceChildren(...(list.length
+      ? list.map((x) => el('div', { class: 'rank-sub-row' },
+        el('span', { class: 'rank-sub-name' }, nameNode(other, x.name)),
+        el('span', { class: 'rank-sub-val', text: yen(x.sales) })))
+      : [el('div', { class: 'rank-sub-note', text: '内訳なし' })]));
+  } catch (err) {
+    body.dataset.loaded = '';   // next time try again
+    body.replaceChildren(el('div', { class: 'rank-sub-note', text: '読み込めません' }));
+  }
+}
+
 const RANK_VIEWS = [
   { dim: 'affiliate', table: 't-rank-aff', wrap: 'rank-aff-wrap', note: 'rank-aff-note' },
   { dim: 'advertiser', table: 't-rank-adv', wrap: 'rank-adv-wrap', note: 'rank-adv-note' },
@@ -1139,11 +1174,21 @@ function renderRankMatrix(table, days, ranked, dim, wrap) {
     if (!hit) return el('td', { class: cls(d, i) }, el('span', { class: 'muted', text: '—' }));
     // 割合の分母は、日別明細に出ているその日の売上そのもの
     const share = d.sales > 0 ? (hit.sales / d.sales) * 100 : 0;
+    // 内訳は押されたときに初めて取りにいく。全マスぶん先に取ると数百回になる。
+    const sub = el('div', { class: 'rank-sub', hidden: true });
+    const more = el('button', {
+      type: 'button',
+      class: 'rank-more',
+      title: `その日の${ENT_LABEL[OTHER_DIM[dim]]}の内訳`,
+      'aria-expanded': 'false',
+      onclick: () => toggleRankSub(more, sub, dim, d.bucket, hit.name),
+    }, '▸');
     return el('td', { class: cls(d, i) },
-      el('div', { class: 'rank-name' }, nameNode(dim, hit.name)),
+      el('div', { class: 'rank-name' }, nameNode(dim, hit.name), more),
       el('div', { class: 'rank-val' },
         yen(hit.sales),
-        el('span', { class: 'rank-share', text: pct(share) })));
+        el('span', { class: 'rank-share', text: pct(share) })),
+      sub);
   };
 
   table.replaceChildren(
@@ -1161,6 +1206,7 @@ function renderRankMatrix(table, days, ranked, dim, wrap) {
   );
 
   if (wrap) wrap.scrollLeft = wrap.scrollWidth;
+  syncSummaryScroll();
 }
 
 const WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'];
@@ -1231,6 +1277,26 @@ function renderDailyMatrix(table, rows, wrap) {
 
   // 直近の日付が見えている状態で開きたいので、右端まで寄せる
   if (wrap) wrap.scrollLeft = wrap.scrollWidth;
+  syncSummaryScroll();
+}
+
+// 日別明細と2つの順位表は別々のスクロール領域なので、放っておくと横位置がずれる。
+// 列幅は CSS で揃えてあるので、横位置も合わせれば同じ日付が縦に並ぶ。
+let summaryScrollWired = false;
+function syncSummaryScroll() {
+  if (summaryScrollWired) return;
+  const wraps = ['summary-matrix-wrap', 'rank-aff-wrap', 'rank-adv-wrap']
+    .map((id) => $(`#${id}`)).filter(Boolean);
+  if (wraps.length < 2) return;
+  for (const w of wraps) {
+    w.addEventListener('scroll', () => {
+      // 同じ値なら代入しない。代入は scroll を起こすので、無いと往復し続ける。
+      for (const other of wraps) {
+        if (other !== w && other.scrollLeft !== w.scrollLeft) other.scrollLeft = w.scrollLeft;
+      }
+    });
+  }
+  summaryScrollWired = true;
 }
 
 // ---- 相手を選んで時系列で見る2画面 --------------------------------------

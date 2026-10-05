@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202610051239';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202610051239';
-import * as ch from './charts.js?v=202610051239';
-import { renderTable, resetSort } from './table.js?v=202610051239';
-import { initImporter, loadImportHistory } from './importer.js?v=202610051239';
-import { dayKind, holidayName } from './holiday.js?v=202610051239';
-import * as cfg from './settings.js?v=202610051239';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202610051244';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202610051244';
+import * as ch from './charts.js?v=202610051244';
+import { renderTable, resetSort } from './table.js?v=202610051244';
+import { initImporter, loadImportHistory } from './importer.js?v=202610051244';
+import { dayKind, holidayName } from './holiday.js?v=202610051244';
+import * as cfg from './settings.js?v=202610051244';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -1135,6 +1135,12 @@ async function renderDayRanks(f, days) {
         el('td', { class: 'empty', text: `読み込めませんでした: ${err.message}` }))));
     }
   }
+  matchSummaryColumns();
+  // 幅を変えたぶん、右端（最新日）に寄せ直す
+  for (const v of RANK_VIEWS) {
+    const w = $(`#${v.wrap}`);
+    if (w) w.scrollLeft = w.scrollWidth;
+  }
 }
 
 // 日付 → その日の上位（売上の多い順）
@@ -1282,6 +1288,27 @@ function renderDailyMatrix(table, rows, wrap) {
 
 // 日別明細と2つの順位表は別々のスクロール領域なので、放っておくと横位置がずれる。
 // 列幅は CSS で揃えてあるので、横位置も合わせれば同じ日付が縦に並ぶ。
+// 列幅を日別明細に実測で合わせる。
+// CSS で同じ min-width を指定しても、中身の違いで 0.7px ほどずれ、
+// 65列ぶんで 37px の食い違いになって日付が縦に並ばなくなる。
+// 実測して table-layout: fixed で固定するのが確実。
+function matchSummaryColumns() {
+  const src = $('#t-summary');
+  const widths = [...(src?.querySelectorAll('thead th') || [])]
+    .map((th) => th.getBoundingClientRect().width);
+  if (widths.length < 2) return;
+  const total = widths.reduce((a, b) => a + b, 0);
+  for (const v of RANK_VIEWS) {
+    const t = $(`#${v.table}`);
+    const ths = t?.querySelectorAll('thead th');
+    if (!ths || ths.length !== widths.length) continue;
+    t.style.tableLayout = 'fixed';
+    t.style.width = `${total}px`;
+    t.style.minWidth = '0';
+    ths.forEach((th, i) => { th.style.width = `${widths[i]}px`; });
+  }
+}
+
 let summaryScrollWired = false;
 function syncSummaryScroll() {
   if (summaryScrollWired) return;

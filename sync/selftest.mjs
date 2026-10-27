@@ -53,6 +53,23 @@ try {
   eq('ファイル鍵の長さ', h.length, 64);
 } catch (e) { ng('取り込み履歴まわり', e.message); }
 
+console.log('■ Cookie の書き戻しまわり');
+try {
+  // 外へはつながず、封をする処理が動くことと、見送り判定だけ確かめる。
+  const { looksUsable } = await import('./ghsecret.mjs');
+  if (looksUsable('_mt_session_id=abc; remember_user_token=def')) ok('使える Cookie を通す');
+  else ng('使える Cookie を通す', '弾いてしまった');
+  if (!looksUsable('_ga=1; _gid=2')) ok('壊れた Cookie を見送る');
+  else ng('壊れた Cookie を見送る', '通してしまった');
+
+  const sodium = (await import('libsodium-wrappers')).default;
+  await sodium.ready;
+  const kp = sodium.crypto_box_keypair();
+  const sealed = sodium.crypto_box_seal(sodium.from_string('test-cookie'), kp.publicKey);
+  const back = sodium.to_string(sodium.crypto_box_seal_open(sealed, kp.publicKey, kp.privateKey));
+  eq('封をして開け直せる', back, 'test-cookie');
+} catch (e) { ng('Cookie の書き戻しまわり', e.message); }
+
 console.log('■ 見出しの正規化');
 eq('全角カッコ', norm('お支払い状況（1）'), 'お支払い状況(1)');
 eq('空白を落とす', norm(' 注文 ID '), '注文ID');

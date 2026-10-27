@@ -66,6 +66,9 @@ jobs:
         working-directory: sync
         env:
           MT_COOKIE: ${{ secrets.MT_COOKIE }}
+          # 実行の最後に、新しくなった Cookie を MT_COOKIE へ書き戻すために使う。
+          # 権限は「Secrets: Read and write」だけ。無ければ書き戻しを飛ばすだけで動く。
+          GH_PAT: ${{ secrets.GH_PAT }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_EMAIL: ${{ secrets.SUPABASE_EMAIL }}

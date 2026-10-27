@@ -15,6 +15,7 @@ import { Session, readAdminContext, fetchTransactions, fetchAffiliateActivityCsv
   withMerchant, fetchRawClick } from './mt.mjs';
 import { Supa } from './supa.mjs';
 import { toAffiliateDaily } from './activity.mjs';
+import { updateSecret, looksUsable } from './ghsecret.mjs';
 
 // 画面と同じパーサを使い回す。ここを別に書くと、報酬額と報酬率の判別のような
 // 実データで詰めた処理が二重管理になる。
@@ -159,7 +160,30 @@ async function main() {
     summary.push(`クリック 新規${ins} / 重複${skipped}`);
   }
 
+  // 最後に、いま手元にある Cookie を Secret へ書き戻す。
+  // マネートラックは使うたびに remember_user_token を差し替えるので、
+  // 保存しておいた値は1回使うと古くなる。ここで上書きしておけば次も通る。
+  // 取り込みがすべて成功したときだけ行う（途中で落ちた回の中途半端な値を残さない）。
+  await saveCookie(s);
+
   log('\n完了: ' + summary.join(' / '));
+}
+
+async function saveCookie(s) {
+  const token = process.env.GH_PAT;
+  if (!token) { log('（GH_PAT が無いので Cookie の保存は行いません）'); return; }
+
+  const now = s.header();
+  if (now === process.env.MT_COOKIE) { log('Cookie に変化なし'); return; }
+  if (!looksUsable(now)) { log('⚠ Cookie にセッションが見当たらないため保存を見送りました'); return; }
+
+  try {
+    const code = await updateSecret('MT_COOKIE', now, token);
+    log(`Cookie を更新しました（${code === 201 ? '新規' : '上書き'}）`);
+  } catch (err) {
+    // ここで落としても取り込み自体は成功しているので、警告だけにする
+    console.error('⚠ Cookie を保存できませんでした: ' + err.message);
+  }
 }
 
 main().catch((e) => {

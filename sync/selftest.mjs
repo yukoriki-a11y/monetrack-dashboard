@@ -62,6 +62,16 @@ try {
   if (!looksUsable('_ga=1; _gid=2')) ok('壊れた Cookie を見送る');
   else ng('壊れた Cookie を見送る', '通してしまった');
 
+  // 成り代わりで remember_user_token が消えても引き継げること（2026-11-01 の不具合）
+  const cm = (s) => { const m = new Map();
+    for (const p of String(s || '').split(';')) { const i = p.indexOf('='); if (i > 0) m.set(p.slice(0, i).trim(), p.slice(i + 1).trim()); }
+    return m; };
+  const orig = cm('_mt_session_id=old; remember_user_token=keepme');
+  const after = cm('_mt_session_id=new');
+  if (!after.has('remember_user_token') && orig.has('remember_user_token')) after.set('remember_user_token', orig.get('remember_user_token'));
+  eq('消えた復帰トークンを引き継ぐ', [...after].map(([k, v]) => `${k}=${v}`).join('; '),
+    '_mt_session_id=new; remember_user_token=keepme');
+
   const sodium = (await import('libsodium-wrappers')).default;
   await sodium.ready;
   const kp = sodium.crypto_box_keypair();

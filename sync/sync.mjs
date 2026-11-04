@@ -103,6 +103,8 @@ async function main() {
 
   const s = new Session(process.env.MT_COOKIE);
   const ctx = await readAdminContext(s);
+  // 保存に使う Cookie。成り代わりの前の状態を保つ（下で取り直す）
+  let cookieSafe = s.header();
   log('マネートラックのセッションは有効です');
 
   const summary = [];
@@ -138,6 +140,12 @@ async function main() {
     summary.push(`日次実績 新規${t.inserted || 0} / 更新${t.updated || 0}`);
   }
 
+  // 成り代わりに入る前の Cookie を控えておく。
+  // admin_log_in_as / back_to_admin を通ると remember_user_token が消される。
+  // 消えた状態を保存してしまうと、セッションが切れた時点で復帰できなくなる
+  // （2026-11-01 にこれで止まった。3日もったのはセッションの寿命ぶん）。
+  cookieSafe = s.header();
+
   // ③ 広告主別クリック（成り代わり → 取得 → 復帰 を社ごとに）
   if (!skip.has('clicks')) {
     let ins = 0;
@@ -164,21 +172,43 @@ async function main() {
   // マネートラックは使うたびに remember_user_token を差し替えるので、
   // 保存しておいた値は1回使うと古くなる。ここで上書きしておけば次も通る。
   // 取り込みがすべて成功したときだけ行う（途中で落ちた回の中途半端な値を残さない）。
-  await saveCookie(s);
+  await saveCookie(cookieSafe);
 
   log('\n完了: ' + summary.join(' / '));
 }
 
-async function saveCookie(s) {
+const cookieMap = (s) => {
+  const m = new Map();
+  for (const part of String(s || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) m.set(part.slice(0, i).trim(), part.slice(i + 1).trim());
+  }
+  return m;
+};
+
+async function saveCookie(snapshot) {
   const token = process.env.GH_PAT;
   if (!token) { log('（GH_PAT が無いので Cookie の保存は行いません）'); return; }
 
-  const now = s.header();
-  if (now === process.env.MT_COOKIE) { log('Cookie に変化なし'); return; }
-  if (!looksUsable(now)) { log('⚠ Cookie にセッションが見当たらないため保存を見送りました'); return; }
+  const orig = cookieMap(process.env.MT_COOKIE);
+  const next = cookieMap(snapshot);
+
+  // 復帰用のトークンだけは、消えていたら元の値を残す。
+  // これが無いとセッション切れから戻れず、数日で詰む。
+  if (!next.has('remember_user_token') && orig.has('remember_user_token')) {
+    next.set('remember_user_token', orig.get('remember_user_token'));
+    log('remember_user_token が消えていたので元の値を引き継ぎました');
+  }
+
+  const value = [...next].map(([k, v]) => `${k}=${v}`).join('; ');
+  // 値は出さない。名前だけ出して、次に壊れたとき何が欠けたか分かるようにする
+  log(`保存する Cookie: ${[...next.keys()].join(', ') || '(空)'}`);
+
+  if (value === process.env.MT_COOKIE) { log('Cookie に変化なし'); return; }
+  if (!looksUsable(value)) { log('⚠ Cookie にセッションが見当たらないため保存を見送りました'); return; }
 
   try {
-    const code = await updateSecret('MT_COOKIE', now, token);
+    const code = await updateSecret('MT_COOKIE', value, token);
     log(`Cookie を更新しました（${code === 201 ? '新規' : '上書き'}）`);
   } catch (err) {
     // ここで落としても取り込み自体は成功しているので、警告だけにする

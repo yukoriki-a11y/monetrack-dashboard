@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>アフィリエイト分析ダッシュボード</title>
 <link rel="icon" href="assets/monetrack-logo.jpg">
-<link rel="stylesheet" href="css/app.css?v=202610051244">
+<link rel="stylesheet" href="css/app.css?v=202611121021">
 </head>
 <body>
 
@@ -473,6 +473,15 @@
           <ul class="log" id="import-log"></ul>
         </div>
         <div class="card">
+          <h2>月次の生データ書き出し</h2>
+          <p class="muted small">
+            月と広告主を選ぶと、その月の成果を1行1件のまま Excel / CSV で落とせます。
+            毎月の報告用。画面の絞り込みとは関係なく、月と広告主だけで決まります。
+          </p>
+          <p><a class="btn" href="tools/export.html">書き出し画面をひらく</a></p>
+        </div>
+
+        <div class="card">
           <div class="card-head">
             <h2>取り込み履歴</h2>
             <button class="btn sm" id="imports-reload">更新</button>
@@ -530,6 +539,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script type="module" src="js/app.js?v=202610051244"></script>
+<script type="module" src="js/app.js?v=202611121021"></script>
 </body>
 </html>

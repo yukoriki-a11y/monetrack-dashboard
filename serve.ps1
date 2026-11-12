@@ -54,7 +54,11 @@ try {
       $ctx.Response.ContentType = if ($types.ContainsKey($ext)) { $types[$ext] } else { 'application/octet-stream' }
       $bytes = [System.IO.File]::ReadAllBytes($full)
       $ctx.Response.ContentLength64 = $bytes.Length
-      $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+      # HEAD does not carry a body. Writing one raises ProtocolViolationException
+      # and kills this loop (some health checks send HEAD).
+      if ($ctx.Request.HttpMethod -ne 'HEAD') {
+        $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+      }
       Write-Host "200 $rel" -ForegroundColor DarkGray
     } else {
       $ctx.Response.StatusCode = 404

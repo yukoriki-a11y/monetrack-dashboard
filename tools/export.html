@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月次の生データ書き出し</title>
+<!--
+  毎月1回、ある月の成果を「加工なしの一覧」として落とすための小さな画面。
+
+  ダッシュボード本体と同じ置き場所にあるので、本体にログインしていれば
+  そのまま使える（ログイン状態はこのサイト全体で共有される）。
+  鍵の類は一切持たない。読めるのは、その人がダッシュボードで読める範囲だけ。
+
+  本体の「成果データ」タブの CSV 書き出しとの違い:
+    * 集計用の関数を通さず conversions を直に読むので速い（1万件でも数十秒）
+    * 画面の絞り込みに左右されない。月と広告主だけで決まる
+    * 列を削らない。マネートラックの成果リストとほぼ同じ並びで出す
+-->
+<link rel="stylesheet" href="../css/app.css?v=202611121021">
+<style>
+  body { background: var(--bg); color: var(--ink); margin: 0;
+         padding: 24px 16px 48px; }
+  .wrap { max-width: 860px; margin: 0 auto; display: grid; gap: var(--gap); }
+  .card { background: var(--panel); border-radius: var(--radius);
+          box-shadow: var(--shadow); padding: 16px 18px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 0 0 10px; }
+  .lead { color: var(--ink-2); font-size: 13px; margin: 0 0 16px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  label.field { display: grid; gap: 4px; font-size: 12px; color: var(--ink-2); }
+  input[type=month] { font: inherit; padding: 6px 8px; border: 0; border-radius: 8px;
+                      background: var(--panel-2); color: var(--ink); }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  /* 広告主の一覧。枠線ではなく地の色の差で区切る */
+  .picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+           gap: 2px; background: var(--panel-2); border-radius: 8px; padding: 6px;
+           max-height: 300px; overflow: auto; }
+  .picks label { display: flex; gap: 6px; align-items: center; font-size: 12px;
+                 padding: 5px 7px; border-radius: 6px; cursor: pointer; }
+  .picks label:hover { background: var(--panel-3); }
+  .picks .id { color: var(--ink-3); font-size: 11px; }
+  .go { display: flex; gap: 12px; align-items: center; margin-top: 14px; }
+  #status { font-size: 13px; color: var(--ink-2); min-height: 1.2em; }
+  #status.bad { color: var(--bad); }
+  .note { font-size: 12px; color: var(--ink-2); line-height: 1.7; }
+  .note strong { color: var(--ink); }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card">
+    <h1>月次の生データ書き出し</h1>
+    <p class="lead">
+      1行＝1成果。集計も体裁もなし。承認・保留・却下すべて入ります。
+      <a href="../index.html">← ダッシュボードに戻る</a>
+    </p>
+
+    <div class="row">
+      <label class="field">対象月
+        <input type="month" id="month">
+      </label>
+      <label class="field">形式
+        <select id="fmt">
+          <option value="xlsx">Excel（.xlsx）</option>
+          <option value="csv">CSV（軽い）</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>広告主</h2>
+    <div class="presets">
+      <button class="btn sm" data-preset="pharma">医薬品系（18社）</button>
+      <button class="btn sm" data-preset="ending">掲載終了の4社</button>
+      <button class="btn sm" data-preset="all">すべて</button>
+      <button class="btn sm" data-preset="none">クリア</button>
+    </div>
+    <div class="picks" id="picks"><span class="note">読み込み中…</span></div>
+
+    <div class="go">
+      <button class="btn primary" id="run">書き出す</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div class="card note">
+    <strong>入っていないもの</strong><br>
+    IPアドレス … 取り込みのときに捨てているので、そもそも保存されていません。<br>
+    アフィリエイターの氏名・メールアドレス … 同じく保存していません（IDだけ）。<br><br>
+    <strong>そのほか</strong><br>
+    日時はすべて日本時間に直してあります。<br>
+    発生月で切っています（ステータスが後から変わったぶんも、発生が対象月ならその月に入ります）。<br>
+    直近の月は保留がまだ多く残っています。承認率を見るなら2〜3か月あとに取り直してください。
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script type="module">
+import { sb, currentUser } from '../js/db.js?v=202611121021';
+
+// 広告主IDと案件名の対応。マネートラックの管理画面にしか無いので手で持つ。
+// 増減があったらここを直す（出なくても書き出しは動く。案件名が空になるだけ）。
+const NAMES = {
+  bestkenko: 'お薬通販ベストケンコー',
+  kusuriexpress: '海外医薬品の個人輸入くすりエクスプレス',
+  petkusuri: 'ペットくすり',
+  unidru: 'お薬の総合通販ユニドラ',
+  win2store: 'Win2 Store',
+  yakuten: 'メデマート（旧海外薬局）',
+  metalpower: 'お薬通販部',
+  genemtmt2312: 'ジェネマート',
+  iekaramt1910: 'イエカラ薬局',
+  bestokusuri: 'ベストお薬',
+  Jade2019: 'Better Health（ベターヘルス）',
+  cocoroafi: 'ココロ薬局',
+  eanshin2025: 'あんしん通販マート',
+  okukon: 'お薬コンシェルジュ',
+  fukuyastore: '海外医薬品の福屋',
+  makotostore: 'まこと薬局',
+  wannyanafi: 'わんにゃん薬局',
+  agelessmen: '海外サプリ通販のエイジレスマン',
+};
+
+const PRESETS = {
+  pharma: Object.keys(NAMES),
+  ending: ['bestkenko', 'kusuriexpress', 'petkusuri', 'unidru'],
+};
+
+// 出す列。マネートラックの成果リストの並びに合わせてある。
+// calc は DB に無い列（ここで作る）。dt は日本時間の文字列に直す列。
+const FIELDS = [
+  { k: 'occurred_at',       h: '発生日時',           t: 'dt' },
+  { k: 'advertiser_id',     h: '広告主ID' },
+  { k: 'adv_name',          h: '案件名',             t: 'calc' },
+  { k: 'affiliate_id',      h: 'アフィリエイターID' },
+  { k: 'order_id',          h: '注文ID' },
+  { k: 'product_id',        h: '商品ID' },
+  { k: 'product_name',      h: '商品名' },
+  { k: 'qty',               h: '数量',               t: 'n' },
+  { k: 'unit_price',        h: '単価',               t: 'n' },
+  { k: 'sale_price',        h: '販売価格',           t: 'n' },
+  { k: 'reward',            h: '報酬',               t: 'n' },
+  { k: 'reward_rate',       h: '報酬率' },
+  { k: 'pay_status1',       h: '支払状況1' },
+  { k: 'tier2_id',          h: '2ティアID' },
+  { k: 'tier2_reward',      h: '2ティア報酬',        t: 'n' },
+  { k: 'tier2_rate',        h: '2ティア率' },
+  { k: 'pay_status2',       h: '支払状況2' },
+  { k: 'campaign',          h: 'キャンペーン' },
+  { k: 'ad_name',           h: '広告名' },
+  { k: 'status',            h: 'ステータス' },
+  { k: 'pay_status',        h: '支払い状況' },
+  { k: 'billed_on',         h: '請求日' },
+  { k: 'first_click_at',    h: '初回クリック',       t: 'dt' },
+  { k: 'first_referrer',    h: '初回リファラ' },
+  { k: 'last_click_at',     h: '最終クリック',       t: 'dt' },
+  { k: 'last_referrer',     h: '最終リファラ' },
+  { k: 'device',            h: 'デバイス' },
+  { k: 'os',                h: 'OS' },
+  { k: 'status_changed_at', h: 'ステータス変更',     t: 'dt' },
+  { k: 'memo',              h: 'メモ' },
+];
+
+const SELECT = FIELDS.filter((f) => f.t !== 'calc').map((f) => f.k).join(',');
+const PAGE = 1000;
+
+const $ = (s) => document.querySelector(s);
+const status = (msg, bad) => { const e = $('#status'); e.textContent = msg; e.classList.toggle('bad', !!bad); };
+
+// 日本時間の文字列にする。Excel には文字列で入れる。
+// 日付型で入れると、開いた環境のロケールで見え方が変わってしまう。
+const pad = (n) => String(n).padStart(2, '0');
+function jst(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const z = new Date(d.getTime() + 9 * 3600 * 1000);
+  return `${z.getUTCFullYear()}/${pad(z.getUTCMonth() + 1)}/${pad(z.getUTCDate())} `
+       + `${pad(z.getUTCHours())}:${pad(z.getUTCMinutes())}:${pad(z.getUTCSeconds())}`;
+}
+
+// ---- 画面のしたく --------------------------------------------------------
+
+// 既定は前月。月初に「先月ぶん」を落とす使い方を想定している。
+{
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const y = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  const m = now.getUTCMonth() === 0 ? 12 : now.getUTCMonth();
+  $('#month').value = `${y}-${pad(m)}`;
+}
+
+let allIds = [];
+
+async function boot() {
+  const user = await currentUser().catch(() => null);
+  if (!user) {
+    $('#picks').innerHTML = '<span class="note">ログインしていません。'
+      + '<a href="../index.html">ダッシュボード</a>でログインしてから開き直してください。</span>';
+    $('#run').disabled = true;
+    return;
+  }
+  const { data, error } = await sb().rpc('dash_filters', {});
+  if (error) { status('広告主の一覧を取れませんでした: ' + error.message, true); return; }
+  allIds = data?.advertisers || [];
+  // 名前が分かっているものを先に、その中は案件名の五十音順で並べる
+  allIds.sort((a, b) => {
+    const na = NAMES[a]; const nb = NAMES[b];
+    if (!!na !== !!nb) return na ? -1 : 1;
+    return String(na || a).localeCompare(String(nb || b), 'ja');
+  });
+  $('#picks').innerHTML = allIds.map((id) => `
+    <label><input type="checkbox" value="${id}">
+      <span>${NAMES[id] || id}${NAMES[id] ? `<br><span class="id">${id}</span>` : ''}</span>
+    </label>`).join('');
+  apply(PRESETS.pharma);
+}
+
+const boxes = () => [...document.querySelectorAll('#picks input')];
+const picked = () => boxes().filter((b) => b.checked).map((b) => b.value);
+const apply = (ids) => { const s = new Set(ids); boxes().forEach((b) => { b.checked = s.has(b.value); }); };
+
+document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+  const p = b.dataset.preset;
+  apply(p === 'all' ? allIds : p === 'none' ? [] : PRESETS[p]);
+}));
+
+// ---- 取ってくる ----------------------------------------------------------
+
+async function fetchRows(ids, from, to) {
+  const out = [];
+  for (;;) {
+    let q = sb().from('conversions').select(SELECT)
+      .gte('occurred_at', from).lt('occurred_at', to)
+      // 並びを1つだけにすると、同時刻の行がページの境目で入れ替わって
+      // 取りこぼしや重複が出る。主キーを足して順番を一意にしておく。
+      .order('occurred_at', { ascending: true })
+      .order('order_id', { ascending: true })
+      .range(out.length, out.length + PAGE - 1);
+    if (ids.length) q = q.in('advertiser_id', ids);
+
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    out.push(...data);
+    status(`${out.length.toLocaleString()} 件…`);
+    if (data.length < PAGE) return out;
+  }
+}
+
+function toAoa(rows) {
+  const head = FIELDS.map((f) => f.h);
+  const body = rows.map((r) => FIELDS.map((f) => {
+    if (f.k === 'adv_name') return NAMES[r.advertiser_id] || '';
+    const v = r[f.k];
+    if (v === null || v === undefined) return '';
+    if (f.t === 'dt') return jst(v);
+    if (f.t === 'n') return Number(v);
+    return v;
+  }));
+  return [head, ...body];
+}
+
+function buildBook(aoa) {
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const last = XLSX.utils.encode_cell({ r: aoa.length - 1, c: FIELDS.length - 1 });
+  ws['!autofilter'] = { ref: `A1:${last}` };
+  // 見出し行の固定は入れていない。SheetJS（無償版）は書き出しに対応しておらず、
+  // 指定しても黙って無視される（0.18.5 で生成物を確認済み）。
+  // Excel 側で「表示 → ウィンドウ枠の固定」を1回押せば済む。
+  ws['!cols'] = FIELDS.map((f) => ({ wch: f.t === 'dt' ? 19 : f.h.length <= 4 ? 9 : 14 }));
+  // 金額と数量に桁区切りを入れる
+  for (let c = 0; c < FIELDS.length; c += 1) {
+    if (FIELDS[c].t !== 'n') continue;
+    for (let r = 1; r < aoa.length; r += 1) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell) cell.z = '#,##0';
+    }
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'rawdata');
+  return wb;
+}
+
+function save(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$('#run').addEventListener('click', async () => {
+  const month = $('#month').value;
+  if (!month) { status('対象月を選んでください', true); return; }
+  const ids = picked();
+  if (!ids.length && !confirm('広告主が1つも選ばれていません。すべての広告主で書き出しますか？')) return;
+
+  const [y, m] = month.split('-').map(Number);
+  const from = `${y}-${pad(m)}-01T00:00:00+09:00`;
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const to = `${nextY}-${pad(nextM)}-01T00:00:00+09:00`;
+
+  $('#run').disabled = true;
+  try {
+    status('読み込み中…');
+    const rows = await fetchRows(ids, from, to);
+    if (!rows.length) { status('その月のデータはありませんでした'); return; }
+
+    status(`${rows.length.toLocaleString()} 件をまとめています…`);
+    const aoa = toAoa(rows);
+    const stamp = `${y}${pad(m)}`;
+
+    if ($('#fmt').value === 'csv') {
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // Excel で開いたときに文字化けしないよう BOM を付ける
+      save(new Blob(['﻿' + XLSX.utils.sheet_to_csv(ws)], { type: 'text/csv' }),
+        `rawdata_${stamp}.csv`);
+    } else {
+      const buf = XLSX.write(buildBook(aoa), { bookType: 'xlsx', type: 'array' });
+      save(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        `rawdata_${stamp}.xlsx`);
+    }
+    status(`${rows.length.toLocaleString()} 件 × ${FIELDS.length} 列を書き出しました`);
+  } catch (e) {
+    status('書き出せませんでした: ' + e.message, true);
+  } finally {
+    $('#run').disabled = false;
+  }
+});
+
+boot();
+</script>
+</body>
+</html>

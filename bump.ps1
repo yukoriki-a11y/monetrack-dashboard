@@ -8,8 +8,9 @@
 # 新しい版が確実に読み込まれるようにする。
 #
 # 変更するファイル
-#   index.html : css/app.css?v=... と js/app.js?v=...
-#   js/*.js    : from './xxx.js?v=...' の相対 import すべて
+#   index.html   : css/app.css?v=... と js/app.js?v=...
+#   js/*.js      : from './xxx.js?v=...' の相対 import すべて
+#   tools/*.html : ../css/app.css?v=... と from '../js/xxx.js?v=...'
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -33,6 +34,20 @@ foreach ($f in Get-ChildItem (Join-Path $root 'js') -Filter *.js) {
   if ($out -ne $src) {
     [System.IO.File]::WriteAllText($f.FullName, $out, (New-Object System.Text.UTF8Encoding($false)))
     $changed++
+  }
+}
+
+# --- tools/*.html（本体とは別に開く小さな画面） ---
+$toolsDir = Join-Path $root 'tools'
+if (Test-Path $toolsDir) {
+  foreach ($f in Get-ChildItem $toolsDir -Filter *.html) {
+    $src = [System.IO.File]::ReadAllText($f.FullName)
+    $out = [regex]::Replace($src, '(href="\.\./css/app\.css)(\?v=[^"]*)?(")', "`${1}?v=$v`${3}")
+    $out = [regex]::Replace($out, "(from\s+'\.\./js/[A-Za-z0-9_./-]+\.js)(\?v=[^']*)?(')", "`${1}?v=$v`${3}")
+    if ($out -ne $src) {
+      [System.IO.File]::WriteAllText($f.FullName, $out, (New-Object System.Text.UTF8Encoding($false)))
+      $changed++
+    }
   }
 }
 

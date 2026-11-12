@@ -80,6 +80,37 @@ try {
   eq('封をして開け直せる', back, 'test-cookie');
 } catch (e) { ng('Cookie の書き戻しまわり', e.message); }
 
+console.log('■ セッション切れからの復帰');
+try {
+  // 外へはつながず、応答だけ差し替えて筋道を確かめる。
+  // 1回目はログイン画面、2回目は中身 → 入り直せること。
+  const { readAdminContext } = await import('./mt.mjs');
+  const signInHtml = '<html><body><a href="/users/sign_in">ログイン</a></body></html>';
+  const goodHtml = '<meta name="csrf-token" content="tok123">'
+    + '<input type="hidden" name="admin_id" value="abc123">';
+
+  let calls = 0;
+  const jar = new Map([['_mt_session_id', 'dead'], ['remember_user_token', 'keep']]);
+  const stub = { jar, fetch: async () => { calls += 1; return { res: { text: async () => (calls === 1 ? signInHtml : goodHtml) } }; } };
+  const ctx = await readAdminContext(stub);
+  eq('入り直して admin_id を読める', ctx.adminId, 'abc123');
+  eq('叩き直した回数', calls, 2);
+  if (jar.has('_mt_session_id')) ng('古いセッションを捨てる', '残っている');
+  else ok('古いセッションを捨てる');
+  if (jar.get('remember_user_token') === 'keep') ok('復帰トークンは残す');
+  else ng('復帰トークンは残す', '消えている');
+
+  // 復帰トークンが無ければ、むだに叩かずその場で諦める
+  let c2 = 0;
+  const stub2 = {
+    jar: new Map([['_mt_session_id', 'dead']]),
+    fetch: async () => { c2 += 1; return { res: { text: async () => signInHtml } }; },
+  };
+  let threw = false;
+  try { await readAdminContext(stub2); } catch { threw = true; }
+  eq('トークンが無ければ1回で諦める', `${threw} / ${c2}回`, 'true / 1回');
+} catch (e) { ng('セッション切れからの復帰', e.message); }
+
 console.log('■ 見出しの正規化');
 eq('全角カッコ', norm('お支払い状況（1）'), 'お支払い状況(1)');
 eq('空白を落とす', norm(' 注文 ID '), '注文ID');

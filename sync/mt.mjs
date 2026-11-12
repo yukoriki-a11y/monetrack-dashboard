@@ -82,7 +82,7 @@ export class Session {
 // /users/get_transactions は空で、/merchants には入っている。
 // 空のまま成り代わると back_to_admin が効かなくなるので、必ず /merchants から読む。
 
-export async function readAdminContext(s) {
+export async function readAdminContext(s, retried = false) {
   const { res } = await s.fetch('/merchants?status=approved');
   const html = await res.text();
   const pick = (name) => {
@@ -95,8 +95,28 @@ export async function readAdminContext(s) {
 
   if (!adminId || !csrf) {
     const loggedOut = /users\/sign_in|authenticate_email/.test(html);
+
+    // セッションが切れていても、「パスワードを保存」のトークンが残っていれば
+    // もう一度だけ入り直せることがある。
+    //
+    // Devise は期限切れを見つけた要求ではログアウトさせるだけで、復帰用の
+    // トークンを見にいかない（timeoutable が先に打ち切るため）。効くのは
+    // 次の要求から。そこで古いセッションを捨てて1回だけ叩き直す。
+    // ここで入り直せれば新しいセッションが発行され、実行の最後に
+    // MT_COOKIE へ書き戻される（＝人が入れ直さなくてよくなる）。
+    if (loggedOut && !retried && s.jar.has('remember_user_token')) {
+      for (const name of [...s.jar.keys()]) {
+        if (/_session/i.test(name)) s.jar.delete(name);
+      }
+      console.log('セッションが切れていました。保存してあるトークンで入り直します');
+      return readAdminContext(s, true);
+    }
+
     throw new Error(loggedOut
-      ? 'セッションが切れています。MT_COOKIE を入れ直してください（docs/daily-sync.md 参照）'
+      ? (retried
+        ? 'セッションが切れています。復帰用トークンでも入り直せませんでした。'
+          + 'MT_COOKIE を入れ直してください（docs/daily-sync.md 参照）'
+        : 'セッションが切れています。MT_COOKIE を入れ直してください（docs/daily-sync.md 参照）')
       : 'admin_id / CSRF を読めませんでした。画面構成が変わった可能性があります');
   }
   return { adminId, csrf };

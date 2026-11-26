@@ -5,7 +5,7 @@
 // チーム全員に同じ設定を配りたい場合は js/config.js に直接書いてもよい。
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202611121021';
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY } from './config.js?v=202611261716';
 
 const LS_URL = 'afd.supabase.url';
 const LS_KEY = 'afd.supabase.key';
@@ -171,6 +171,15 @@ export const api = {
       p_limit: limit,
       p_advertisers: scope.advertisers?.length ? scope.advertisers : listArg(f.advertisers),
       p_affiliates: scope.affiliates?.length ? scope.affiliates : listArg(f.affiliates),
+    }),
+  // 日別ランキング専用。compare と返す列は同じだが、上位の決め方が違う。
+  //   compare   … 期間まるごとの売上で上位 N 件 → それを日ごとに並べ替え
+  //   rankDaily … 日ごとに順位をつけて、一度でも top 位に入った相手を返す
+  // 後者でないと「その日は1位だが期間合計では下位」の相手が出てこない。
+  // 返るのは候補の全日ぶんなので、前日とくらべる矢印もそのまま出せる。
+  rankDaily: (f, dim, top = 10, order = 'sales') =>
+    rpc('dash_rank_daily', {
+      ...base(f), p_dim: dim, p_top: top, p_order: order,
     }),
   // p_filters は列ごとの絞り込み {"device":["パソコン"]}。
   // 表計算ソフトの見出しフィルタに対応する。

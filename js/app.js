@@ -1,12 +1,12 @@
 // 画面全体の制御：認証ゲート → フィルタ → 各ビューの描画
 
-import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202611121021';
-import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202611121021';
-import * as ch from './charts.js?v=202611121021';
-import { renderTable, resetSort } from './table.js?v=202611121021';
-import { initImporter, loadImportHistory } from './importer.js?v=202611121021';
-import { dayKind, holidayName } from './holiday.js?v=202611121021';
-import * as cfg from './settings.js?v=202611121021';
+import { $, $$, el, num, yen, pct, compact, ymd, addDays, fmtDateTime, daysBetween, downloadCsv, debounce, statusBadge, nameNode, ENT_LABEL, hostLink } from './util.js?v=202611261716';
+import { hasConn, saveConn, clearConn, getConn, sb, signIn, signOut, currentUser, onAuthChange, api, updatePassword, sendPasswordReset } from './db.js?v=202611261716';
+import * as ch from './charts.js?v=202611261716';
+import { renderTable, resetSort } from './table.js?v=202611261716';
+import { initImporter, loadImportHistory } from './importer.js?v=202611261716';
+import { dayKind, holidayName } from './holiday.js?v=202611261716';
+import * as cfg from './settings.js?v=202611261716';
 
 // 保存されている見た目の設定を、何より先に <html> へ当てる
 // （あとから当てると一瞬だけ既定の配色が見えてしまう）
@@ -1069,13 +1069,13 @@ async function renderSummary() {
 // 日別明細と同じ「日付を横に並べる」作りだが、行は順位であって同じ相手ではない。
 // 列ごとに並べ替えるので、1位の中身は日によって入れ替わる。
 //
-// 日ごとに上位を取り直すには本来1日ずつ問い合わせることになるが、
-// 3か月だと90回になってしまう。そこで期間全体の上位をまとめて取り、
-// 日ごとに並べ替え直している。割合の分母は日別明細と同じ実際の日合計を
-// 使うので、取りこぼしがあっても％は狂わない（合計が100%に足りない形で出る）。
+// 順位は dash_rank_daily が日ごとにつける（sql/017_rank_daily.sql）。
+// 以前は期間全体の売上上位60件を取って日ごとに並べ替えていたが、
+// それだと「その日は上位だが期間合計では61位以下」の相手が
+// 一度も出てこなかった。
+// 割合の分母は日別明細と同じ実際の日合計を使う。
 
 const RANK_TOP = 10;
-const RANK_POOL = 60;
 
 // 内訳で見る軸。アフィリエイターなら広告主、広告主ならアフィリエイター。
 const OTHER_DIM = { affiliate: 'advertiser', advertiser: 'affiliate' };
@@ -1122,7 +1122,7 @@ async function renderDayRanks(f, days) {
     const table = $(`#${v.table}`);
     if (!table) continue;
     try {
-      const series = await api.compare(f, v.dim, null, 'day', RANK_POOL);
+      const series = await api.rankDaily(f, v.dim, RANK_TOP);
       const ranked = rankByDay(days, series);
       state.dayRanks[v.dim] = { days, ranked };
       renderRankMatrix(table, days, ranked, v.dim, $(`#${v.wrap}`));
@@ -2116,7 +2116,6 @@ const RANK_PARTS = [
 const RANK_ROWS = 100;       // 表に出す順位の数
 const RANK_BARS = 100;       // 棒グラフに出す本数（枠の中を縦にスクロールして見る）
 const RANK_BAR_H = 18;       // 棒1本ぶんの高さ。本数ぶん背を伸ばして読めるようにする
-const RANK_DAY_SERIES = 12;  // 日別で追いかける相手の数
 const RANK_DAY_TOP = 10;     // 日別で1日あたりに出す順位の数（画面いっぱい使えるので多め）
 
 const LS_RANK_PARTS = 'afd.parts.rank';
@@ -2159,7 +2158,8 @@ async function renderRank() {
   $('#rank-parts').previousElementSibling?.toggleAttribute('hidden', daily);
 
   if (daily) {
-    const dayRows = await api.compare(f, r.dayDim, null, 'day', RANK_DAY_SERIES);
+    // 候補の切り出しも、いま見ている指標でやる（売上順で切ってクリックで並べると噛み合わない）
+    const dayRows = await api.rankDaily(f, r.dayDim, RANK_DAY_TOP, metric.key);
     box.style.gridTemplateColumns = 'minmax(0, 1fr)';
     box.replaceChildren(rankDayWidget(dayRows, metric));
     return;
@@ -2450,7 +2450,7 @@ function rankDayWidget(rows, metric) {
     el('header', { class: 'eb-head' },
       el('h3', { text: `日別 ${metric.label}ランキング` }),
       dimSeg,
-      el('span', { class: 'eb-stats', text: `上位${RANK_DAY_SERIES}件の中での順位` })),
+      el('span', { class: 'eb-stats', text: `その日ごとの上位${RANK_DAY_TOP}件` })),
     buckets.length ? wrap : el('p', { class: 'empty', text: 'データがありません' }));
 }
 

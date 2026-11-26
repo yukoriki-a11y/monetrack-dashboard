@@ -117,7 +117,7 @@ GitHub Secrets に入れる。**値はリポジトリにも会話にも残さな
 
 | 名前 | 中身 |
 | --- | --- |
-| `MT_COOKIE` | `app.monetrack.com` のセッションCookie（Devise の `_session` と `remember_user_token`） |
+| `MT_COOKIE` | `app.monetrack.com` のセッションCookie（`_mt_session_id` と `remember_user_token`） |
 | `SUPABASE_URL` | Supabase の Project URL |
 | `SUPABASE_ANON_KEY` | 公開用 anon key（`service_role` は使わない） |
 | `SUPABASE_EMAIL` | 取り込み用ユーザーのメールアドレス |
@@ -134,7 +134,7 @@ GitHub Secrets に入れる。**値はリポジトリにも会話にも残さな
    ここにチェックが無いと `remember_user_token` が発行されず、
    セッションが切れたときに自分で入り直せない（＝また人が貼り直すことになる）
 2. `F12` → **Application**（アプリケーション）タブ → 左の **Cookies** → `https://app.monetrack.com`
-3. `_session` で終わる名前のもの（Devise のセッション）と、あれば `remember_user_token` の
+3. `_mt_session_id`（Devise のセッション）と、あれば `remember_user_token` の
    2つを、`名前=値; 名前=値` の形で1行にする
 4. GitHub → リポジトリ → **Settings** → **Secrets and variables** → **Actions**
    → **New repository secret** → 名前 `MT_COOKIE` に貼る
